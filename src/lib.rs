@@ -90,7 +90,7 @@ pub fn app(state: Shared) -> Router {
         .route("/api/settings", get(api::settings).put(api::save_settings))
         .route("/api/agent/config", get(agent::get_config).put(agent::put_config))
         .route("/api/agent/models", get(agent::models))
-        .route("/api/agent/conversations", get(agent::conversations))
+        .route("/api/agent/conversations", get(agent::conversations).delete(agent::clear_conversations))
         .route(
             "/api/agent/conversations/{id}",
             get(agent::conversation)

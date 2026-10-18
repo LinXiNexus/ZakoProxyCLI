@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   ArrowUp,
   Brain,
+  ChevronDown,
   Cpu,
   History,
   LoaderCircle,
@@ -17,6 +18,8 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api, errorMessage } from "./api";
 import { Field } from "./components";
+import { loadPrefs } from "./prefs";
+import type { Prefs } from "./prefs";
 
 type AgentConfig = {
   endpoint: string;
@@ -28,7 +31,7 @@ type AgentConfig = {
   reasoning: string;
 };
 
-type ChatMessage = { role: "user" | "assistant"; content: string };
+type ChatMessage = { role: "user" | "assistant"; content: string; reasoning?: string; ts?: number };
 type ConversationSummary = {
   id: string;
   title: string;
@@ -51,6 +54,7 @@ function newConversationId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 type ToolEvent = { name: string; args: unknown; result?: string; done: boolean };
+type ModelGroup = { provider: string; models: string[] };
 type Notice = (text: string, error?: boolean) => void;
 
 const emptyConfig: AgentConfig = {
@@ -81,7 +85,7 @@ export function AgentSettingsPage({
   onOpenAccounts: () => void;
 }) {
   const [config, setConfig] = useState<AgentConfig>(emptyConfig);
-  const [models, setModels] = useState<string[]>([]);
+  const [models, setModels] = useState<ModelGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -91,12 +95,12 @@ export function AgentSettingsPage({
       try {
         const [cfg, list] = await Promise.all([
           loadConfig(),
-          api<string[]>("/agent/models"),
+          api<ModelGroup[]>("/agent/models"),
         ]);
         setModels(list);
         setConfig({
           ...cfg,
-          model: cfg.model || list[0] || "",
+          model: cfg.model || list[0]?.models[0] || "",
           endpoint: "",
           api_key: "",
         });
@@ -168,10 +172,14 @@ export function AgentSettingsPage({
                 value={config.model}
                 onChange={(event) => setConfig({ ...config, model: event.target.value })}
               >
-                {models.map((model) => (
-                  <option key={model} value={model}>
-                    {model}
-                  </option>
+                {models.map((group) => (
+                  <optgroup key={group.provider} label={group.provider}>
+                    {group.models.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </Field>
@@ -207,6 +215,44 @@ export function AgentSettingsPage({
 /* ------------------------------------------------------------------ */
 /* 智能助手（聊天页面）                                                */
 /* ------------------------------------------------------------------ */
+function ThinkingBlock({
+  text,
+  streaming,
+  defaultOpen,
+}: {
+  text: string;
+  streaming: boolean;
+  defaultOpen: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rk-thinking">
+      <button
+        type="button"
+        className="rk-thinking-head"
+        onClick={() => setOpen((current) => !current)}
+      >
+        <Brain size={14} />
+        <span>思考过程</span>
+        {streaming ? <LoaderCircle className="spin" size={12} /> : null}
+        <ChevronDown
+          size={14}
+          className={`rk-thinking-chevron ${open ? "open" : ""}`}
+        />
+      </button>
+      {open ? <div className="rk-thinking-text">{text}</div> : null}
+    </div>
+  );
+}
+
+function timeLabel(ts?: number) {
+  if (!ts) return "";
+  return new Date(ts * 1000).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 export function AgentChatPage({
   onOpenSettings,
 }: {
@@ -218,21 +264,30 @@ export function AgentChatPage({
   const [history, setHistory] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
-  const [useRoot, setUseRoot] = useState(true);
+  const [useRoot, setUseRoot] = useState(() => loadPrefs().defaultRoot);
+  const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs());
   const [tools, setTools] = useState<ToolEvent[]>([]);
-  const [models, setModels] = useState<string[]>([]);
+  const [models, setModels] = useState<ModelGroup[]>([]);
   const [picker, setPicker] = useState<"model" | "thinking" | null>(null);
+  const [modelQuery, setModelQuery] = useState("");
+  const [collapsedProviders, setCollapsedProviders] = useState<Record<string, boolean>>({});
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const sync = () => setPrefs(loadPrefs());
+    window.addEventListener("zako-prefs", sync);
+    return () => window.removeEventListener("zako-prefs", sync);
+  }, []);
+
+  useEffect(() => {
     void (async () => {
       try {
         const [cfg, list, summary] = await Promise.all([
           loadConfig(),
-          api<string[]>("/agent/models"),
+          api<ModelGroup[]>("/agent/models"),
           api<ConversationSummary[]>("/agent/conversations"),
         ]);
         setConfig(cfg);
@@ -282,6 +337,14 @@ export function AgentChatPage({
   }, [history, tools]);
 
   const configured = Boolean(config.model);
+  const filteredModelGroups = models
+    .map((group) => ({
+      ...group,
+      models: group.models.filter((model) =>
+        model.toLowerCase().includes(modelQuery.trim().toLowerCase()),
+      ),
+    }))
+    .filter((group) => group.models.length > 0);
 
   async function send() {
     const text = input.trim();
@@ -289,10 +352,15 @@ export function AgentChatPage({
     setInput("");
     setError("");
     setTools([]);
-    const nextHistory: ChatMessage[] = [...history, { role: "user", content: text }];
-    setHistory([...nextHistory, { role: "assistant", content: "" }]);
+    const now = Math.floor(Date.now() / 1000);
+    const nextHistory: ChatMessage[] = [
+      ...history,
+      { role: "user", content: text, ts: now },
+    ];
+    setHistory([...nextHistory, { role: "assistant", content: "", ts: now }]);
     setStreaming(true);
     let assistant = "";
+    let reasoning = "";
     try {
       const response = await fetch("/api/agent/chat", {
         method: "POST",
@@ -338,6 +406,16 @@ export function AgentChatPage({
               if (index >= 0) copy[index] = { role: "assistant", content: assistant };
               return copy;
             });
+          } else if (event === "reasoning") {
+            reasoning += typeof data.text === "string" ? data.text : "";
+            setHistory((current) => {
+              const copy = [...current];
+              const index = copy.length - 1;
+              if (index >= 0) {
+                copy[index] = { ...copy[index], reasoning };
+              }
+              return copy;
+            });
           } else if (event === "tool") {
             setTools((current) => [
               ...current,
@@ -366,8 +444,11 @@ export function AgentChatPage({
     } finally {
       setStreaming(false);
       if (nextHistory.length > 0) {
-        const finalMessages = assistant
-          ? [...nextHistory, { role: "assistant" as const, content: assistant }]
+        const finalMessages = assistant || reasoning
+          ? [
+              ...nextHistory,
+              { role: "assistant" as const, content: assistant, reasoning, ts: Math.floor(Date.now() / 1000) },
+            ]
           : nextHistory;
         void persistConversation(finalMessages);
       }
@@ -431,7 +512,11 @@ export function AgentChatPage({
   }
 
   return (
-    <div className="rk-agent">
+    <div
+      className={`rk-agent rk-font-${prefs.fontSize} rk-style-${prefs.messageStyle} ${
+        prefs.compact ? "rk-compact" : ""
+      } ${prefs.wrapCode ? "" : "rk-nowrap-code"}`}
+    >
       <header className="rk-header">
         <div className="rk-header-left">
           <span className="rk-spark">
@@ -534,15 +619,27 @@ export function AgentChatPage({
 
         {history.map((message, index) =>
           message.role === "user" ? (
-            <div key={index} className="rk-user">
-              {message.content}
+            <div key={index} className="rk-user-block">
+              <div className="rk-user">{message.content}</div>
+              {prefs.showTime && message.ts ? (
+                <span className="rk-time">{timeLabel(message.ts)}</span>
+              ) : null}
             </div>
           ) : (
             <div key={index} className="rk-assistant">
-              <div className="rk-assistant-label">
-                <Sparkles size={14} />
-                <span>{(config.model || "ASSISTANT").toUpperCase()}</span>
-              </div>
+              {prefs.showModelLabel ? (
+                <div className="rk-assistant-label">
+                  <Sparkles size={14} />
+                  <span>{(config.model || "ASSISTANT").toUpperCase()}</span>
+                </div>
+              ) : null}
+              {message.reasoning ? (
+                <ThinkingBlock
+                  text={message.reasoning}
+                  streaming={streaming && index === history.length - 1}
+                  defaultOpen={prefs.thinkingOpen}
+                />
+              ) : null}
               <div className="rk-assistant-text">
                 {message.content ? (
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -554,60 +651,79 @@ export function AgentChatPage({
                   ""
                 )}
               </div>
+              {prefs.showTime && message.ts ? (
+                <span className="rk-time">{timeLabel(message.ts)}</span>
+              ) : null}
             </div>
           ),
         )}
 
-        {tools.map((tool, index) => (
-          <details key={`tool-${index}`} className="rk-tool">
-            <summary>
-              <Wrench size={14} />
-              <span>工具 · {tool.name}</span>
-              {tool.done ? null : <LoaderCircle className="spin" size={13} />}
-            </summary>
-            <pre>{JSON.stringify(tool.args, null, 2)}</pre>
-            {tool.result !== undefined ? <pre className="rk-tool-out">{tool.result}</pre> : null}
-          </details>
-        ))}
+        {prefs.showTools
+          ? tools.map((tool, index) => (
+              <details key={`tool-${index}`} className="rk-tool">
+                <summary>
+                  <Wrench size={14} />
+                  <span>工具 · {tool.name}</span>
+                  {tool.done ? null : <LoaderCircle className="spin" size={13} />}
+                </summary>
+                <pre>{JSON.stringify(tool.args, null, 2)}</pre>
+                {tool.result !== undefined ? (
+                  <pre className="rk-tool-out">{tool.result}</pre>
+                ) : null}
+              </details>
+            ))
+          : null}
         <div ref={endRef} />
       </div>
 
       <div className="rk-composer">
-        <div className="rk-controls">
-          <button
-            type="button"
-            className="rk-chip"
-            onClick={() => setPicker((current) => (current === "model" ? null : "model"))}
-          >
-            <Cpu size={13} />
-            <span>{config.model || "选择模型"}</span>
-          </button>
-          <button
-            type="button"
-            className="rk-chip"
-            onClick={() =>
-              setPicker((current) => (current === "thinking" ? null : "thinking"))
-            }
-          >
-            <Brain size={13} />
-            <span>{thinkingLabel(config.reasoning)}</span>
-          </button>
-        </div>
         {picker === "model" ? (
-          <div className="rk-picker">
+          <div className="rk-picker rk-picker-models">
+            <input
+              className="rk-picker-search"
+              placeholder="搜索模型"
+              value={modelQuery}
+              onChange={(event) => setModelQuery(event.target.value)}
+            />
             {models.length === 0 ? (
               <div className="rk-picker-empty">账号管理里没有可用的 chat 模型</div>
+            ) : filteredModelGroups.length === 0 ? (
+              <div className="rk-picker-empty">没有匹配的模型</div>
             ) : (
-              models.map((model) => (
-                <button
-                  type="button"
-                  key={model}
-                  className={`rk-picker-item ${model === config.model ? "active" : ""}`}
-                  onClick={() => void choose({ model })}
-                >
-                  {model}
-                </button>
-              ))
+              filteredModelGroups.map((group) => {
+                const collapsed =
+                  modelQuery.trim() === "" && Boolean(collapsedProviders[group.provider]);
+                return (
+                  <div key={group.provider} className="rk-picker-group">
+                    <button
+                      type="button"
+                      className="rk-picker-group-title"
+                      onClick={() =>
+                        setCollapsedProviders((current) => ({
+                          ...current,
+                          [group.provider]: !current[group.provider],
+                        }))
+                      }
+                    >
+                      <ChevronDown size={13} className={collapsed ? "" : "open"} />
+                      <span>{group.provider}</span>
+                      <small>{group.models.length}</small>
+                    </button>
+                    {collapsed
+                      ? null
+                      : group.models.map((model) => (
+                          <button
+                            type="button"
+                            key={model}
+                            className={`rk-picker-item ${model === config.model ? "active" : ""}`}
+                            onClick={() => void choose({ model })}
+                          >
+                            {model}
+                          </button>
+                        ))}
+                  </div>
+                );
+              })
             )}
           </div>
         ) : null}
@@ -630,38 +746,65 @@ export function AgentChatPage({
             ))}
           </div>
         ) : null}
-        <label className="rk-root-chip">
-          <input
-            type="checkbox"
-            checked={useRoot}
-            onChange={(event) => setUseRoot(event.target.checked)}
-          />
-          <ShieldAlert size={13} />
-          root
-        </label>
-        <div className={`rk-input ${!configured ? "is-disabled" : ""}`}>
-          <textarea
-            rows={1}
-            value={input}
-            placeholder={loading ? "正在读取配置…" : "输入消息与 AI 聊天"}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                event.preventDefault();
-                void send();
-              }
-            }}
-            disabled={streaming || loading || !configured}
-          />
+        <div className="rk-tools-row">
+          <label className="rk-root-chip">
+            <input
+              type="checkbox"
+              checked={useRoot}
+              onChange={(event) => setUseRoot(event.target.checked)}
+            />
+            <ShieldAlert size={12} />
+            root
+          </label>
           <button
             type="button"
-            className="rk-send"
-            onClick={() => void send()}
-            disabled={!input.trim() || loading || streaming || !configured}
-            title="发送"
+            className="rk-chip"
+            onClick={() => {
+              setPicker((current) => (current === "model" ? null : "model"));
+              setModelQuery("");
+            }}
           >
-            {streaming ? <LoaderCircle className="spin" size={18} /> : <ArrowUp size={18} />}
+            <Cpu size={12} />
+            <span>{config.model || "选择模型"}</span>
           </button>
+          <button
+            type="button"
+            className="rk-chip"
+            onClick={() => setPicker((current) => (current === "thinking" ? null : "thinking"))}
+          >
+            <Brain size={12} />
+            <span>{thinkingLabel(config.reasoning)}</span>
+          </button>
+        </div>
+        <div className={`rk-input ${!configured ? "is-disabled" : ""}`}>
+          <div className="rk-input-main">
+            <textarea
+              rows={1}
+              value={input}
+              placeholder={loading ? "正在读取配置…" : "输入消息与 AI 聊天"}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.nativeEvent.isComposing) return;
+                const shouldSend = prefs.enterToSend
+                  ? event.key === "Enter" && !event.shiftKey
+                  : event.key === "Enter" && (event.ctrlKey || event.metaKey);
+                if (shouldSend) {
+                  event.preventDefault();
+                  void send();
+                }
+              }}
+              disabled={streaming || loading || !configured}
+            />
+            <button
+              type="button"
+              className="rk-send"
+              onClick={() => void send()}
+              disabled={!input.trim() || loading || streaming || !configured}
+              title="发送"
+            >
+              {streaming ? <LoaderCircle className="spin" size={18} /> : <ArrowUp size={18} />}
+            </button>
+          </div>
         </div>
       </div>
     </div>

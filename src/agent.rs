@@ -285,6 +285,15 @@ fn run(
                                     yield ev("delta", json!({"text": text}));
                                 }
                             }
+                            if let Some(text) = delta
+                                .get("reasoning_content")
+                                .and_then(Value::as_str)
+                                .or_else(|| delta.get("reasoning").and_then(Value::as_str))
+                            {
+                                if !text.is_empty() {
+                                    yield ev("reasoning", json!({"text": text}));
+                                }
+                            }
                             if let Some(calls) = delta.get("tool_calls").and_then(Value::as_array) {
                                 for call in calls {
                                     let idx = call
@@ -340,6 +349,15 @@ fn run(
                     }
                 };
                 if let Some(message) = value.pointer("/choices/0/message") {
+                    if let Some(text) = message
+                        .get("reasoning_content")
+                        .and_then(Value::as_str)
+                        .or_else(|| message.get("reasoning").and_then(Value::as_str))
+                    {
+                        if !text.is_empty() {
+                            yield ev("reasoning", json!({"text": text}));
+                        }
+                    }
                     if let Some(text) = message.get("content").and_then(Value::as_str) {
                         if !text.is_empty() {
                             content.push_str(text);
@@ -620,19 +638,38 @@ fn resolve_account(
 pub async fn models(State(s): State<Shared>, h: HeaderMap) -> ApiResult<Value> {
     auth(&s, &h)?;
     let cfg = s.store.config()?;
-    let mut models: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut groups: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
+        std::collections::BTreeMap::new();
     for account in cfg
         .accounts
         .iter()
         .filter(|account| account.enabled && account.protocols.iter().any(|item| item == "chat"))
     {
+        let provider = if account.name.trim().is_empty() {
+            reqwest::Url::parse(&account.endpoint)
+                .ok()
+                .and_then(|url| url.host_str().map(str::to_owned))
+                .unwrap_or_else(|| "其他".into())
+        } else {
+            account.name.trim().to_owned()
+        };
+        let entry = groups.entry(provider).or_default();
         for requested in account.models.iter().chain(account.model_mappings.keys()) {
             if account.actual_model(requested).is_some() {
-                models.insert(requested.clone());
+                entry.insert(requested.clone());
             }
         }
     }
-    Ok(Json(json!(models.into_iter().collect::<Vec<_>>())))
+    let list: Vec<Value> = groups
+        .into_iter()
+        .map(|(provider, models)| {
+            json!({
+                "provider": provider,
+                "models": models.into_iter().collect::<Vec<_>>()
+            })
+        })
+        .collect();
+    Ok(Json(json!(list)))
 }
 
 #[derive(Deserialize)]
@@ -694,6 +731,12 @@ pub async fn save_conversation(
     });
     s.store.save_agent_conversation(&id, &value)?;
     Ok(Json(value))
+}
+
+pub async fn clear_conversations(State(s): State<Shared>, h: HeaderMap) -> ApiResult<Value> {
+    auth(&s, &h)?;
+    s.store.clear_agent_conversations()?;
+    Ok(Json(json!({"ok": true})))
 }
 
 pub async fn delete_conversation(

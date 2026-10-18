@@ -1,6 +1,6 @@
 [package]
 name = "zakoai-proxy"
-version = "0.6.0"
+version = "1.2.0"
 edition = "2024"
 license = "MIT"
 default-run = "zakoai-proxy"

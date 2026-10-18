@@ -20,9 +20,9 @@ use tokio::{
     sync::Mutex,
 };
 
-const REPOSITORY: &str = "https://github.com/mizaawa/ZakoProxyCLI.git";
-const RELEASE_API: &str = "https://api.github.com/repos/mizaawa/ZakoProxyCLI/releases/latest";
-const IMAGE: &str = "ghcr.io/mizaawa/zakoai-proxy-cli:latest";
+const REPOSITORY: &str = "https://github.com/LinXiNexus/ZakoProxyCLI.git";
+const RELEASE_API: &str = "https://api.github.com/repos/LinXiNexus/ZakoProxyCLI/releases/latest";
+const IMAGE: &str = "ghcr.io/linxinexus/zakoai-proxy-cli:latest";
 const MAX_LOGS: usize = 150;
 const RELEASE_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 const RELEASE_RETRY_DELAY: Duration = Duration::from_secs(60);
@@ -1163,13 +1163,13 @@ fn parse_release(value: &Value) -> Result<Release, String> {
         || value["draft"].as_bool() != Some(false)
         || value["prerelease"].as_bool() != Some(false)
     {
-        return Err("Only canonical stable official releases are supported".into());
+        return Err("Only canonical stable releases are supported".into());
     }
-    let canonical_url = format!("https://github.com/mizaawa/ZakoProxyCLI/releases/tag/{tag}");
-    let legacy_url = format!("https://github.com/mizaawa/zakoai-proxy-cli/releases/tag/{tag}");
+    let canonical_url = format!("https://github.com/LinXiNexus/ZakoProxyCLI/releases/tag/{tag}");
+    let legacy_url = format!("https://github.com/LinXiNexus/zakoai-proxy-cli/releases/tag/{tag}");
     let url = value["html_url"].as_str().unwrap_or_default();
     if url != canonical_url && url != legacy_url {
-        return Err("Release URL does not match the official repository".into());
+        return Err("Release URL does not match the configured repository".into());
     }
     Ok(Release {
         tag: tag.into(),
@@ -1414,7 +1414,7 @@ mod tests {
                     }
                     Json(json!({
                         "tag_name": "v999.0.0", "draft": false, "prerelease": false,
-                        "html_url": "https://github.com/mizaawa/zakoai-proxy-cli/releases/tag/v999.0.0"
+                        "html_url": "https://github.com/LinXiNexus/zakoai-proxy-cli/releases/tag/v999.0.0"
                     })).into_response()
                 }
             }),
@@ -1875,10 +1875,10 @@ mod tests {
     }
     #[test]
     fn rejects_nonofficial_and_prerelease_metadata() {
-        let mut release = json!({"tag_name":"v1.2.3","draft":false,"prerelease":false,"html_url":"https://github.com/mizaawa/zakoai-proxy-cli/releases/tag/v1.2.3","body":"notes"});
+        let mut release = json!({"tag_name":"v1.2.3","draft":false,"prerelease":false,"html_url":"https://github.com/LinXiNexus/zakoai-proxy-cli/releases/tag/v1.2.3","body":"notes"});
         for url in [
-            "https://github.com/mizaawa/zakoai-proxy-cli/releases/tag/v1.2.3",
-            "https://github.com/mizaawa/ZakoProxyCLI/releases/tag/v1.2.3",
+            "https://github.com/LinXiNexus/zakoai-proxy-cli/releases/tag/v1.2.3",
+            "https://github.com/LinXiNexus/ZakoProxyCLI/releases/tag/v1.2.3",
         ] {
             release["html_url"] = json!(url);
             let parsed = parse_release(&release).unwrap();
@@ -1894,9 +1894,9 @@ mod tests {
         for url in [
             "https://evil.invalid/",
             "https://github.com/other/ZakoProxyCLI/releases/tag/v1.2.3",
-            "https://github.com/mizaawa/ZakoProxyCLI/releases/tag/v1.2.4",
-            "https://github.com/mizaawa/ZakoProxyCLI/releases/tag/v1.2.3?download=1",
-            "https://github.com/mizaawa/ZakoProxyCLI/releases/tag/v1.2.3#fragment",
+            "https://github.com/LinXiNexus/ZakoProxyCLI/releases/tag/v1.2.4",
+            "https://github.com/LinXiNexus/ZakoProxyCLI/releases/tag/v1.2.3?download=1",
+            "https://github.com/LinXiNexus/ZakoProxyCLI/releases/tag/v1.2.3#fragment",
             "https://github.com.evil.invalid/mizaawa/ZakoProxyCLI/releases/tag/v1.2.3",
         ] {
             release["html_url"] = json!(url);

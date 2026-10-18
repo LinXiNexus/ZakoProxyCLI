@@ -48,6 +48,14 @@ public class MainActivity extends Activity {
         s.setAllowFileAccess(false);
         s.setAllowContentAccess(false);
         s.setSupportZoom(false);
+        s.setBuiltInZoomControls(false);
+        s.setDisplayZoomControls(false);
+        s.setUseWideViewPort(false);
+        s.setLoadWithOverviewMode(false);
+        try {
+            WebSettings.class.getMethod("setForceEnableZoom", boolean.class).invoke(s, false);
+        } catch (Exception ignored) {
+        }
         s.setTextZoom(100);
         if (Build.VERSION.SDK_INT >= 26) {
             webView.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);

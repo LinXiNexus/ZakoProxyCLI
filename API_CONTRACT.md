@@ -96,7 +96,7 @@ Validation mirrors the existing password policy (12-256 characters). Registratio
 
 ## Agent model routing
 
-- GET `/api/agent/models`: array of requested model IDs from enabled accounts that include the `chat` protocol. Derived from each account's `models` and `model_mappings` keys.
+- GET `/api/agent/models`: array of `{provider, models:[...]}` groups. `provider` is the account name (or endpoint host when unnamed); models are the requested IDs from enabled accounts that include the `chat` protocol, derived from each account's `models` and `model_mappings` keys.
 - PUT `/api/agent/config`: `{endpoint?,api_key?,model,system_prompt,allow_root,max_steps}`. When `endpoint` is empty (recommended), the agent resolves the account that supports `model` and calls that account's upstream directly, reusing its stored API key, model mapping and proxy. A nonempty `endpoint` remains available as a manual override.
 - POST `/api/agent/chat` streams SSE events (`delta`, `tool`, `tool_result`, `error`, `done`) and no longer requires a separate provider key when using account routing.
 

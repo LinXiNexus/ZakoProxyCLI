@@ -4923,3 +4923,382 @@ td {
 .rk-picker {
   box-shadow: 0 12px 40px rgba(27, 56, 32, 0.18);
 }
+
+/* Wrap long text instead of horizontal scrolling */
+.rk-agent,
+.rk-chat,
+.rk-assistant,
+.rk-assistant-text {
+  min-width: 0;
+  max-width: 100%;
+}
+.rk-agent {
+  overflow-x: visible;
+}
+.rk-assistant-text,
+.rk-assistant-text p,
+.rk-assistant-text li,
+.rk-assistant-text blockquote,
+.rk-assistant-text td,
+.rk-assistant-text th {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+.rk-assistant-text code {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.rk-assistant-text pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  overflow-x: visible;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.rk-assistant-text pre code {
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+.rk-assistant-text table {
+  table-layout: fixed;
+  word-break: break-word;
+}
+.rk-assistant-text th,
+.rk-assistant-text td {
+  overflow-wrap: anywhere;
+}
+
+/* Hard guarantee: wrap code and never allow horizontal page drag */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+  overflow-x: clip;
+}
+.rk-assistant-text pre,
+.rk-assistant-text pre code {
+  white-space: pre-wrap !important;
+  word-break: break-all !important;
+  overflow-wrap: anywhere !important;
+  overflow-x: visible !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+.rk-assistant-text table {
+  width: 100% !important;
+  table-layout: fixed !important;
+}
+.rk-assistant-text th,
+.rk-assistant-text td {
+  word-break: break-all !important;
+  overflow-wrap: anywhere !important;
+}
+
+/* Markdown tables must wrap (global table rule sets white-space: nowrap) */
+.rk-assistant-text table,
+.rk-assistant-text th,
+.rk-assistant-text td {
+  white-space: normal !important;
+}
+
+/* Reasoning / thinking block */
+.rk-thinking {
+  border: 1px solid var(--line);
+  background: #f7faf8;
+  border-radius: 12px;
+  padding: 8px 12px;
+  font-size: 12.5px;
+  color: #5b6b62;
+}
+.rk-thinking summary {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--green);
+  font-weight: 600;
+}
+.rk-thinking summary::-webkit-details-marker {
+  display: none;
+}
+.rk-thinking-text {
+  margin-top: 8px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+  color: #6f7f75;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+/* Thinking block default-open header */
+.rk-thinking-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: var(--green);
+  font-weight: 600;
+  font-size: 12.5px;
+  text-align: left;
+}
+.rk-thinking-chevron {
+  margin-left: auto;
+  transition: transform 0.15s;
+}
+.rk-thinking-chevron.open {
+  transform: rotate(180deg);
+}
+/* Model / thinking chips inside the input bar */
+.rk-input {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 10px 12px 8px;
+}
+.rk-input-tools {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.rk-input-tools .rk-chip {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11.5px;
+}
+.rk-input-main {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+/* Bottom row: small model / thinking controls */
+.rk-input {
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 8px 8px 18px;
+}
+.rk-input-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.rk-bottom-tools {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 4px 0;
+}
+.rk-bottom-tools .rk-chip {
+  height: 24px;
+  padding: 0 9px;
+  font-size: 10.5px;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: #6f7f75;
+  box-shadow: none;
+}
+
+/* Bottom controls: keep small but visible above the system bar */
+.rk-composer {
+  bottom: calc(14px + env(safe-area-inset-bottom, 0px));
+}
+.rk-bottom-tools {
+  padding: 6px 4px 6px;
+}
+.rk-bottom-tools .rk-chip {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11px;
+  background: #eef2f0;
+  border: 1px solid #e2e9e5;
+  color: #4b5a53;
+  box-shadow: none;
+}
+
+/* Frosted glass input */
+.rk-composer::before {
+  background: linear-gradient(180deg, rgba(247, 249, 248, 0), rgba(247, 249, 248, 0.55) 55%);
+}
+.rk-input {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  backdrop-filter: blur(16px) saturate(1.2);
+  box-shadow: 0 10px 30px rgba(27, 56, 32, 0.14);
+}
+.rk-input:focus-within {
+  background: rgba(255, 255, 255, 0.72);
+  border-color: #cfe3d9;
+}
+.rk-bottom-tools .rk-chip {
+  background: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+}
+
+/* One row of controls above the input */
+.rk-tools-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.rk-tools-row::-webkit-scrollbar {
+  display: none;
+}
+.rk-tools-row .rk-chip,
+.rk-tools-row .rk-root-chip {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 11px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.rk-tools-row .rk-chip {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  color: #4b5a53;
+}
+.rk-tools-row .rk-chip span {
+  max-width: 42vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.rk-tools-row .rk-root-chip {
+  gap: 5px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+
+/* Provider-grouped model picker */
+.rk-picker-models {
+  padding: 8px;
+}
+.rk-picker-search {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  width: 100%;
+  height: 32px;
+  margin-bottom: 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 10px;
+  font-size: 12.5px;
+  background: #fff;
+  color: #27362f;
+}
+.rk-picker-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.rk-picker-group-title {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  padding: 8px 10px 4px;
+}
+
+/* Collapsible provider group headers */
+.rk-picker-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 8px 10px 4px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-align: left;
+}
+.rk-picker-group-title small {
+  margin-left: auto;
+  font-weight: 400;
+  font-size: 9.5px;
+}
+.rk-picker-group-title svg {
+  transition: transform 0.15s;
+}
+.rk-picker-group-title svg.open {
+  transform: rotate(180deg);
+}
+
+/* Personalization effects */
+.rk-font-small { --rk-font-size: 14px; }
+.rk-font-normal { --rk-font-size: 15.5px; }
+.rk-font-large { --rk-font-size: 17.5px; }
+.rk-assistant-text { font-size: var(--rk-font-size, 15.5px); }
+.rk-user { font-size: calc(var(--rk-font-size, 15.5px) - 1px); }
+.rk-thinking-text { font-size: calc(var(--rk-font-size, 15.5px) - 3px); }
+.rk-style-bubble .rk-assistant-text {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 10px 13px;
+}
+.rk-compact .rk-chat { gap: 10px; }
+.rk-compact .rk-assistant-text { line-height: 1.55; }
+.rk-nowrap-code .rk-assistant-text pre,
+.rk-nowrap-code .rk-assistant-text pre code {
+  white-space: pre !important;
+  word-break: normal !important;
+  overflow-wrap: normal !important;
+  overflow-x: auto !important;
+}
+.rk-user-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  max-width: 82%;
+  align-self: flex-end;
+}
+.rk-user-block .rk-user { max-width: 100%; }
+.rk-time { font-size: 10px; color: var(--muted); padding: 0 4px; }
+.prefs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 14px; }
+.prefs-rows { display: flex; flex-direction: column; }
+.prefs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--line);
+}
+.prefs-row:last-child { border-bottom: 0; }
+.prefs-row > span { display: flex; flex-direction: column; gap: 3px; }
+.prefs-row strong { font-size: 13px; color: #27362f; font-weight: 550; }
+.prefs-row small { font-size: 11.5px; color: var(--muted); }
+.prefs-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.prefs-about {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11.5px;
+  margin-top: 14px;
+}
+@media (max-width: 640px) {
+  .prefs-grid { grid-template-columns: 1fr; }
+}

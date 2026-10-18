@@ -16,6 +16,7 @@ import {
   LoaderCircle,
   LogOut,
   Menu,
+  Palette,
   RefreshCw,
   Settings2,
   ShieldCheck,
@@ -28,8 +29,8 @@ import { Button, ErrorBox, Field, IconButton, Toast } from "./components";
 import { Dashboard } from "./Dashboard";
 import { GroupsPage, AccountsPage, KeysPage } from "./Management";
 import { SettingsPage } from "./Settings";
-import { PromoBanner } from "./PromoBanner";
 import { AgentChatPage, AgentSettingsPage } from "./Agent";
+import { PersonalizationPage } from "./Personalization";
 import { useUpdateCheck } from "./useUpdateCheck";
 import { version } from "../package.json";
 
@@ -37,6 +38,7 @@ const navigation = [
   { id: "dashboard", label: "仪表盘", icon: LayoutDashboard },
   { id: "agent", label: "智能助手", icon: Bot },
   { id: "agent-settings", label: "模型接入", icon: SlidersHorizontal },
+  { id: "personalize", label: "个性化", icon: Palette },
   { id: "groups", label: "分组管理", icon: FolderClosed },
   { id: "accounts", label: "账号管理", icon: Database },
   { id: "keys", label: "密钥管理", icon: KeyRound },
@@ -92,7 +94,6 @@ function Authentication({
   }
   return (
     <div className="auth-shell">
-      <PromoBanner />
       <header>
         <Brand />
         <span className="auth-label">
@@ -294,7 +295,6 @@ export default function App() {
   if (loading)
     return (
       <div className="startup-shell">
-        <PromoBanner />
         <div className="full-loading">
           <Brand />
           <LoaderCircle className="spin" size={23} />
@@ -305,7 +305,6 @@ export default function App() {
   if (error)
     return (
       <div className="startup-shell">
-        <PromoBanner />
         <div className="full-loading">
           <Brand />
           <ErrorBox message={error} />
@@ -377,7 +376,7 @@ export default function App() {
           <div className="sidebar-version">
             <span>ZAKO / v{version}</span>
             <a
-              href="https://github.com/mizaawa/zakoai-proxy-cli"
+              href="https://github.com/LinXiNexus/ZakoProxyCLI"
               target="_blank"
               rel="noreferrer"
               aria-label="GitHub"
@@ -389,7 +388,6 @@ export default function App() {
         </div>
       </aside>
       <div className="workspace">
-        <PromoBanner />
         <header className="topbar">
           <div className="breadcrumb">
             <IconButton
@@ -447,6 +445,7 @@ export default function App() {
           {page === "agent-settings" && (
             <AgentSettingsPage notify={notify} onDone={() => setPage("agent")} onOpenAccounts={() => setPage("accounts")} />
           )}
+          {page === "personalize" && <PersonalizationPage notify={notify} />}
           {page === "dashboard" && (
             <Dashboard revision={revision} notify={notify} state={state} />
           )}

@@ -1,0 +1,189 @@
+import { useState } from "react";
+import { Copy, Info, Trash2 } from "lucide-react";
+import { api, copy, errorMessage } from "./api";
+import { Button, Field, Toggle } from "./components";
+import { loadPrefs, savePrefs } from "./prefs";
+import type { Prefs } from "./prefs";
+import { version } from "../package.json";
+
+function ToggleRow({
+  label,
+  hint,
+  checked,
+  onChange,
+}: {
+  label: string;
+  hint?: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <div className="prefs-row">
+      <span>
+        <strong>{label}</strong>
+        {hint ? <small>{hint}</small> : null}
+      </span>
+      <Toggle label="" checked={checked} onChange={onChange} />
+    </div>
+  );
+}
+
+export function PersonalizationPage({
+  notify,
+}: {
+  notify: (text: string, error?: boolean) => void;
+}) {
+  const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs());
+  const [busy, setBusy] = useState("");
+
+  function update(patch: Partial<Prefs>) {
+    const next = { ...prefs, ...patch };
+    setPrefs(next);
+    savePrefs(next);
+  }
+
+  async function exportData() {
+    setBusy("export");
+    try {
+      const list = await api<{ id: string }[]>("/agent/conversations");
+      const data: unknown[] = [];
+      for (const item of list) {
+        data.push(await api(`/agent/conversations/${item.id}`));
+      }
+      await copy(JSON.stringify(data, null, 2));
+      notify(`已复制 ${data.length} 个对话的 JSON 到剪贴板`);
+    } catch (failure) {
+      notify(errorMessage(failure), true);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function clearHistory() {
+    if (!window.confirm("确定清空所有对话历史？此操作不可恢复。")) return;
+    setBusy("clear");
+    try {
+      await api("/agent/conversations", "DELETE");
+      notify("对话历史已清空");
+    } catch (failure) {
+      notify(errorMessage(failure), true);
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <div className="rk-settings-page">
+      <div className="page-heading">
+        <div>
+          <div className="eyebrow">PERSONALIZATION</div>
+          <h1>个性化</h1>
+          <p>聊天外观、内容展示与交互习惯</p>
+        </div>
+      </div>
+
+      <section className="rk-settings">
+        <div className="prefs-grid">
+          <Field label="字体大小">
+            <select
+              value={prefs.fontSize}
+              onChange={(event) =>
+                update({ fontSize: event.target.value as Prefs["fontSize"] })
+              }
+            >
+              <option value="small">小</option>
+              <option value="normal">标准</option>
+              <option value="large">大</option>
+            </select>
+          </Field>
+          <Field label="消息样式">
+            <select
+              value={prefs.messageStyle}
+              onChange={(event) =>
+                update({ messageStyle: event.target.value as Prefs["messageStyle"] })
+              }
+            >
+              <option value="plain">简洁</option>
+              <option value="bubble">气泡</option>
+            </select>
+          </Field>
+        </div>
+
+        <div className="prefs-rows">
+          <ToggleRow
+            label="思考过程默认展开"
+            hint="有思考内容时直接显示，而不是折叠"
+            checked={prefs.thinkingOpen}
+            onChange={(thinkingOpen) => update({ thinkingOpen })}
+          />
+          <ToggleRow
+            label="显示工具调用"
+            hint="展示 Agent 调用了哪些工具"
+            checked={prefs.showTools}
+            onChange={(showTools) => update({ showTools })}
+          />
+          <ToggleRow
+            label="显示消息时间"
+            hint="在消息下方显示发送时间"
+            checked={prefs.showTime}
+            onChange={(showTime) => update({ showTime })}
+          />
+          <ToggleRow
+            label="显示模型名称"
+            hint="在助手消息上方显示模型标识"
+            checked={prefs.showModelLabel}
+            onChange={(showModelLabel) => update({ showModelLabel })}
+          />
+          <ToggleRow
+            label="代码块自动换行"
+            hint="关闭后长代码改为横向滚动"
+            checked={prefs.wrapCode}
+            onChange={(wrapCode) => update({ wrapCode })}
+          />
+          <ToggleRow
+            label="紧凑模式"
+            hint="减小消息间距，一屏显示更多"
+            checked={prefs.compact}
+            onChange={(compact) => update({ compact })}
+          />
+        </div>
+
+        <div className="prefs-rows">
+          <ToggleRow
+            label="回车发送"
+            hint="关闭后回车换行，Ctrl/⌘+回车发送"
+            checked={prefs.enterToSend}
+            onChange={(enterToSend) => update({ enterToSend })}
+          />
+          <ToggleRow
+            label="root 默认开启"
+            hint="进入对话时默认勾选 root"
+            checked={prefs.defaultRoot}
+            onChange={(defaultRoot) => update({ defaultRoot })}
+          />
+        </div>
+
+        <div className="prefs-actions">
+          <Button type="button" busy={busy === "export"} onClick={() => void exportData()}>
+            <Copy size={15} />
+            复制对话 JSON
+          </Button>
+          <Button
+            type="button"
+            className="danger"
+            busy={busy === "clear"}
+            onClick={() => void clearHistory()}
+          >
+            <Trash2 size={15} />
+            清空对话历史
+          </Button>
+        </div>
+
+        <div className="prefs-about">
+          <Info size={14} />
+          ZakoAI {version} · 个性化设置保存在本机
+        </div>
+      </section>
+    </div>
+  );
+}

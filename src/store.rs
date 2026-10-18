@@ -553,6 +553,12 @@ impl Store {
         .map_err(|e| e.to_string())?;
         Ok(())
     }
+    pub fn clear_agent_conversations(&self) -> Result<()> {
+        let db = self.db.lock().map_err(|e| e.to_string())?;
+        db.execute("DELETE FROM agent_conversations", [])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
     pub fn delete_agent_conversation(&self, id: &str) -> Result<()> {
         let db = self.db.lock().map_err(|e| e.to_string())?;
         db.execute("DELETE FROM agent_conversations WHERE id=?1", [id])
