@@ -3,7 +3,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use rand::RngCore;
 use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use std::{collections::BTreeMap, path::Path, sync::Mutex};
 
@@ -163,10 +163,26 @@ impl Default for Settings {
         }
     }
 }
+#[derive(Clone, Serialize, Deserialize)]
+pub struct Admin {
+    pub id: String,
+    pub username: String,
+    pub password_hash: String,
+    #[serde(default = "default_admin_role")]
+    pub role: String,
+    #[serde(default)]
+    pub created_at: i64,
+}
+fn default_admin_role() -> String {
+    "owner".into()
+}
+
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct Config {
     pub username: String,
     pub password_hash: String,
+    #[serde(default)]
+    pub admins: Vec<Admin>,
     pub settings: Settings,
     pub groups: Vec<Group>,
     pub accounts: Vec<Account>,
@@ -195,6 +211,7 @@ pub struct RequestLog {
 pub struct Store {
     db: Mutex<Connection>,
     cipher: Aes256Gcm,
+    dir: std::path::PathBuf,
 }
 fn read_config(db: &Connection) -> Result<Config> {
     db.query_row("SELECT value FROM config WHERE id=1", [], |row| {
@@ -214,17 +231,18 @@ fn write_config(db: &Connection, config: &Config) -> Result<()> {
     .map_err(|e| e.to_string())?;
     Ok(())
 }
-fn insert_session(db: &Connection, raw: &str) -> Result<()> {
+fn insert_session(db: &Connection, raw: &str, admin_id: Option<&str>) -> Result<()> {
     db.execute("DELETE FROM sessions WHERE expires <= ?1", [now()])
         .map_err(|e| e.to_string())?;
     db.execute(
-        "INSERT INTO sessions VALUES(?1,?2)",
-        params![digest(raw), now() + 86400],
+        "INSERT OR REPLACE INTO sessions(hash, expires, admin_id) VALUES(?1,?2,?3)",
+        params![digest(raw), now() + 86400, admin_id],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
 }
 impl Store {
+    pub fn dir(&self) -> &std::path::Path { &self.dir }
     pub fn open(dir: &Path) -> Result<Self> {
         std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
         let path = dir.join("master.key");
@@ -254,10 +272,38 @@ impl Store {
             CREATE TABLE IF NOT EXISTS config (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS sessions (hash TEXT PRIMARY KEY, expires INTEGER NOT NULL);
             CREATE TABLE IF NOT EXISTS requests (id TEXT PRIMARY KEY, timestamp INTEGER NOT NULL, value TEXT NOT NULL);
-            CREATE INDEX IF NOT EXISTS requests_time ON requests(timestamp);") .map_err(|e| e.to_string())?;
+            CREATE INDEX IF NOT EXISTS requests_time ON requests(timestamp);
+            CREATE TABLE IF NOT EXISTS agent_conversations (id TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at INTEGER NOT NULL);
+            CREATE INDEX IF NOT EXISTS agent_conversations_time ON agent_conversations(updated_at);") .map_err(|e| e.to_string())?;
+        let has_admin_id: i64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('sessions') WHERE name='admin_id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        if has_admin_id == 0 {
+            db.execute("ALTER TABLE sessions ADD COLUMN admin_id TEXT", [])
+                .map_err(|e| e.to_string())?;
+        }
+        let mut migrated = read_config(&db)?;
+        if migrated.admins.is_empty()
+            && !migrated.username.is_empty()
+            && !migrated.password_hash.is_empty()
+        {
+            migrated.admins.push(Admin {
+                id: id(),
+                username: migrated.username.clone(),
+                password_hash: migrated.password_hash.clone(),
+                role: "owner".into(),
+                created_at: now(),
+            });
+            write_config(&db, &migrated)?;
+        }
         Ok(Self {
             db: Mutex::new(db),
             cipher,
+            dir: dir.to_path_buf(),
         })
     }
     pub fn seal(&self, plain: &str) -> Result<String> {
@@ -297,16 +343,20 @@ impl Store {
     }
     pub fn session(&self, raw: &str) -> Result<()> {
         let db = self.db.lock().map_err(|e| e.to_string())?;
-        insert_session(&db, raw)
+        insert_session(&db, raw, None)
     }
     pub fn session_for_credentials(&self, raw: &str, username: &str, hash: &str) -> Result<bool> {
         let mut db = self.db.lock().map_err(|e| e.to_string())?;
         let tx = db.transaction().map_err(|e| e.to_string())?;
         let cfg = read_config(&tx)?;
-        if hash.is_empty() || cfg.username != username || cfg.password_hash != hash {
+        let Some(admin) = cfg
+            .admins
+            .iter()
+            .find(|a| a.username == username && a.password_hash == hash)
+        else {
             return Ok(false);
-        }
-        insert_session(&tx, raw)?;
+        };
+        insert_session(&tx, raw, Some(&admin.id))?;
         tx.commit().map_err(|e| e.to_string())?;
         Ok(true)
     }
@@ -314,20 +364,37 @@ impl Store {
         let mut db = self.db.lock().map_err(|e| e.to_string())?;
         let tx = db.transaction().map_err(|e| e.to_string())?;
         let mut cfg = read_config(&tx)?;
-        let authenticated = tx
+        let row: Option<Option<String>> = tx
             .query_row(
-                "SELECT 1 FROM sessions WHERE hash=?1 AND expires>?2",
+                "SELECT admin_id FROM sessions WHERE hash=?1 AND expires>?2",
                 params![digest(session), now()],
-                |_| Ok(()),
+                |row| row.get(0),
             )
             .optional()
-            .map_err(|e| e.to_string())?
-            .is_some();
-        // Credential replacement and revocation share one transaction with session creation.
-        if cfg.password_hash != old_hash || !authenticated {
+            .map_err(|e| e.to_string())?;
+        let Some(session_admin) = row else {
+            return Ok(false);
+        };
+        let target = session_admin
+            .as_deref()
+            .and_then(|id| cfg.admins.iter().position(|a| a.id == id))
+            .or_else(|| {
+                if cfg.admins.len() == 1 {
+                    Some(0)
+                } else {
+                    cfg.admins.iter().position(|a| a.username == cfg.username)
+                }
+            });
+        let Some(index) = target else {
+            return Ok(false);
+        };
+        if cfg.admins[index].password_hash != old_hash {
             return Ok(false);
         }
-        cfg.password_hash = new_hash;
+        cfg.admins[index].password_hash = new_hash.clone();
+        if cfg.admins[index].username == cfg.username {
+            cfg.password_hash = new_hash;
+        }
         write_config(&tx, &cfg)?;
         tx.execute("DELETE FROM sessions", [])
             .map_err(|e| e.to_string())?;
@@ -358,6 +425,137 @@ impl Store {
             .lock()
             .map_err(|e| e.to_string())?
             .execute("DELETE FROM sessions", [])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    pub fn admins(&self) -> Result<Vec<Admin>> {
+        Ok(self.config()?.admins)
+    }
+    pub fn find_admin(&self, username: &str) -> Result<Option<Admin>> {
+        Ok(self
+            .config()?
+            .admins
+            .into_iter()
+            .find(|a| a.username == username))
+    }
+    pub fn session_admin(&self, raw: &str) -> Option<Admin> {
+        let db = self.db.lock().ok()?;
+        let row: Option<Option<String>> = db
+            .query_row(
+                "SELECT admin_id FROM sessions WHERE hash=?1 AND expires>?2",
+                params![digest(raw), now()],
+                |row| row.get(0),
+            )
+            .optional()
+            .ok()?;
+        let admin_id = row.flatten()?;
+        let cfg = read_config(&db).ok()?;
+        cfg.admins.into_iter().find(|a| a.id == admin_id)
+    }
+    pub fn create_admin(&self, username: &str, hash: &str, role: &str) -> Result<Admin> {
+        let admin = Admin {
+            id: id(),
+            username: username.to_owned(),
+            password_hash: hash.to_owned(),
+            role: role.to_owned(),
+            created_at: now(),
+        };
+        let pending = admin.clone();
+        self.update(|c| {
+            if c.admins
+                .iter()
+                .any(|a| a.username.eq_ignore_ascii_case(username))
+            {
+                return Err("Username already exists".into());
+            }
+            c.admins.push(pending);
+            Ok(())
+        })?;
+        Ok(admin)
+    }
+    pub fn delete_admin(&self, admin_id: &str) -> Result<()> {
+        self.update(|c| {
+            let position = c
+                .admins
+                .iter()
+                .position(|a| a.id == admin_id)
+                .ok_or("Administrator not found")?;
+            c.admins.remove(position);
+            Ok(())
+        })
+    }
+    pub fn set_admin_password(&self, admin_id: &str, hash: String) -> Result<()> {
+        self.update(|c| {
+            let admin = c
+                .admins
+                .iter_mut()
+                .find(|a| a.id == admin_id)
+                .ok_or("Administrator not found")?;
+            admin.password_hash = hash;
+            Ok(())
+        })
+    }
+    pub fn owner_count(&self) -> Result<usize> {
+        Ok(self
+            .config()?
+            .admins
+            .iter()
+            .filter(|a| a.role == "owner")
+            .count())
+    }
+    pub fn agent_conversations(&self) -> Result<Vec<Value>> {
+        let db = self.db.lock().map_err(|e| e.to_string())?;
+        let mut statement = db
+            .prepare("SELECT value FROM agent_conversations ORDER BY updated_at DESC LIMIT 100")
+            .map_err(|e| e.to_string())?;
+        let rows = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        let mut list = Vec::new();
+        for row in rows {
+            let text = row.map_err(|e| e.to_string())?;
+            if let Ok(value) = serde_json::from_str::<Value>(&text) {
+                list.push(json!({
+                    "id": value.get("id").cloned().unwrap_or(Value::Null),
+                    "title": value.get("title").cloned().unwrap_or(Value::Null),
+                    "model": value.get("model").cloned().unwrap_or(Value::Null),
+                    "updated_at": value.get("updated_at").cloned().unwrap_or(Value::Null),
+                    "message_count": value
+                        .get("messages")
+                        .and_then(Value::as_array)
+                        .map(|messages| messages.len())
+                        .unwrap_or(0)
+                }));
+            }
+        }
+        Ok(list)
+    }
+    pub fn agent_conversation(&self, id: &str) -> Result<Option<Value>> {
+        let db = self.db.lock().map_err(|e| e.to_string())?;
+        let text: Option<String> = db
+            .query_row(
+                "SELECT value FROM agent_conversations WHERE id=?1",
+                [id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        Ok(text.and_then(|text| serde_json::from_str(&text).ok()))
+    }
+    pub fn save_agent_conversation(&self, id: &str, value: &Value) -> Result<()> {
+        let db = self.db.lock().map_err(|e| e.to_string())?;
+        let text = serde_json::to_string(value).map_err(|e| e.to_string())?;
+        db.execute(
+            "INSERT INTO agent_conversations(id, value, updated_at) VALUES(?1, ?2, ?3)
+             ON CONFLICT(id) DO UPDATE SET value=excluded.value, updated_at=excluded.updated_at",
+            params![id, text, now()],
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+    pub fn delete_agent_conversation(&self, id: &str) -> Result<()> {
+        let db = self.db.lock().map_err(|e| e.to_string())?;
+        db.execute("DELETE FROM agent_conversations WHERE id=?1", [id])
             .map_err(|e| e.to_string())?;
         Ok(())
     }

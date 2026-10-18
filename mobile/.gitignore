@@ -1,0 +1,10 @@
+assets/
+lib/
+obj/
+dex/
+classes.dex
+base.apk
+aligned.apk
+aligned_sign.apk
+*.apk
+*.idsig

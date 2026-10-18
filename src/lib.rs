@@ -1,3 +1,4 @@
+pub mod agent;
 pub mod api;
 pub mod network;
 pub mod profiles;
@@ -87,7 +88,22 @@ pub fn app(state: Shared) -> Router {
         )
         .route("/api/keys/{id}/reveal", post(api::reveal_key))
         .route("/api/settings", get(api::settings).put(api::save_settings))
+        .route("/api/agent/config", get(agent::get_config).put(agent::put_config))
+        .route("/api/agent/models", get(agent::models))
+        .route("/api/agent/conversations", get(agent::conversations))
+        .route(
+            "/api/agent/conversations/{id}",
+            get(agent::conversation)
+                .put(agent::save_conversation)
+                .delete(agent::delete_conversation),
+        )
+        .route("/api/agent/chat", post(agent::chat))
         .route("/api/password", post(api::password))
+        .route("/api/me", get(api::me))
+        .route("/api/register", post(api::register))
+        .route("/api/admins", get(api::admins_list).post(api::admin_create))
+        .route("/api/admins/{id}", axum::routing::delete(api::admin_delete))
+        .route("/api/admins/{id}/password", post(api::admin_password))
         .route("/api/updates", get(update::status).post(update::start))
         .route("/api/updates/latest", get(update::latest))
         .route("/api/stats", get(api::stats))

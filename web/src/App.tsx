@@ -3,6 +3,7 @@ import type { FormEvent } from "react";
 import {
   Activity,
   ArrowRight,
+  Bot,
   ChevronRight,
   CircleHelp,
   Command,
@@ -18,6 +19,7 @@ import {
   RefreshCw,
   Settings2,
   ShieldCheck,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
 import { api, errorMessage } from "./api";
@@ -27,11 +29,14 @@ import { Dashboard } from "./Dashboard";
 import { GroupsPage, AccountsPage, KeysPage } from "./Management";
 import { SettingsPage } from "./Settings";
 import { PromoBanner } from "./PromoBanner";
+import { AgentChatPage, AgentSettingsPage } from "./Agent";
 import { useUpdateCheck } from "./useUpdateCheck";
 import { version } from "../package.json";
 
 const navigation = [
   { id: "dashboard", label: "仪表盘", icon: LayoutDashboard },
+  { id: "agent", label: "智能助手", icon: Bot },
+  { id: "agent-settings", label: "模型接入", icon: SlidersHorizontal },
   { id: "groups", label: "分组管理", icon: FolderClosed },
   { id: "accounts", label: "账号管理", icon: Database },
   { id: "keys", label: "密钥管理", icon: KeyRound },
@@ -436,6 +441,12 @@ export default function App() {
           </div>
         </header>
         <main className="main-content">
+          {page === "agent" && (
+            <AgentChatPage onOpenSettings={() => setPage("agent-settings")} />
+          )}
+          {page === "agent-settings" && (
+            <AgentSettingsPage notify={notify} onDone={() => setPage("agent")} onOpenAccounts={() => setPage("accounts")} />
+          )}
           {page === "dashboard" && (
             <Dashboard revision={revision} notify={notify} state={state} />
           )}

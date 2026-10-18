@@ -78,3 +78,31 @@ All supported request protocols resolve the original client model independently 
 With the configuration above, `{"model":"chat-main","input":"Hello"}` sends `model: "gpt-6-astra"` with only the selected `gpt-6-astra` profile. An unmapped `gpt-5.6-sol` request keeps that model ID and uses only its own selected profile. An unmapped, unselected model makes this account ineligible. The matching rules are identical across all supported protocols; the example account enables only Responses and Compact.
 
 The 27 profiles retaining coldcoffee text are inline Claude, Grok, Gemini, DeepSeek, and GLM configuration, including adapted Skill text; they do not install or execute local Skills/tools. Each match adds approximately 64–66 KB UTF-8. DeepSeek 4.1 Flash now uses the 4,748-byte Hanshuang API adaptation from `aimeoa/hanshuang-codex` commit `cf9c1537c2bd4ed8577ed6509ee665a39709d7d4`, with both spellings sharing the retained profile ID. Only general task-execution mechanisms from the shared prompt are adapted. `profiles/hanshuang/SOURCE.json` and `third_party/hanshuang/NOTICE.md` record source selection, hashes, and the upstream MIT README declaration with missing root LICENSE. `python scripts/import-hanshuang.py --check` verifies offline. Availability/forwarding do not guarantee model availability, behavior changes, upstream system-instruction precedence, or refusal bypass. READMEs document attribution and license facts.
+
+## Administrators
+
+Administrators are stored as Argon2-hashed accounts with a role of `owner` or `admin`. Sessions are bound to an administrator; legacy single-admin installs migrate to one `owner` entry on startup. User avatars show the first letter of the current administrator's username.
+
+- GET `/api/me`: `{id,username,role,created_at}` for the current session.
+- GET `/api/admins`: array `{id,username,role,created_at}`. Requires any administrator session.
+- POST `/api/register`: `{username,password,role?}`. Before initialization it creates the first `owner` and returns a session cookie. After initialization it requires an `owner` session, or an `X-Register-Token` header equal to the `REGISTER_TOKEN` environment variable; new accounts default to `admin` unless `role:"owner"` is supplied.
+- POST `/api/admins`: `{username,password,role?}` -> created administrator. Owner only. `role` is `owner` or `admin` (default `admin`).
+- DELETE `/api/admins/:id`: owner only. Rejects deleting yourself or the last owner.
+- POST `/api/admins/:id/password`: `{new_password}`. Owner can reset any administrator; an `admin` can only reset their own.
+- POST `/api/setup` remains the first-run initializer and now creates the first `owner`. POST `/api/login` accepts any administrator username/password.
+- POST `/api/password`: changes the current administrator's password; all sessions are revoked.
+
+Validation mirrors the existing password policy (12-256 characters). Registration and administrator creation responses never include password hashes.
+
+## Agent model routing
+
+- GET `/api/agent/models`: array of requested model IDs from enabled accounts that include the `chat` protocol. Derived from each account's `models` and `model_mappings` keys.
+- PUT `/api/agent/config`: `{endpoint?,api_key?,model,system_prompt,allow_root,max_steps}`. When `endpoint` is empty (recommended), the agent resolves the account that supports `model` and calls that account's upstream directly, reusing its stored API key, model mapping and proxy. A nonempty `endpoint` remains available as a manual override.
+- POST `/api/agent/chat` streams SSE events (`delta`, `tool`, `tool_result`, `error`, `done`) and no longer requires a separate provider key when using account routing.
+
+## Agent conversations
+
+- GET `/api/agent/conversations`: array `{id,title,model,updated_at,message_count}`, newest first, at most 100.
+- GET `/api/agent/conversations/:id`: `{id,title,model,messages:[{role,content}],updated_at}`.
+- PUT `/api/agent/conversations/:id`: `{title,model,messages}` upserts the conversation; `id` matches `[A-Za-z0-9_-]{1,100}`.
+- DELETE `/api/agent/conversations/:id`.

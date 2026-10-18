@@ -1,6 +1,6 @@
 use crate::{
     ApiError, ApiResult, Shared, bad, profiles,
-    store::{Account, ApiKey, Group, Settings, Usage, digest, id, now, token},
+    store::{Account, Admin, ApiKey, Group, Settings, Usage, digest, id, now, token},
     unauthorized,
 };
 use argon2::{
@@ -101,6 +101,39 @@ pub fn auth(state: &Shared, headers: &HeaderMap) -> Result<(), ApiError> {
     }
     Ok(())
 }
+fn require_admin(state: &Shared, headers: &HeaderMap) -> Result<Admin, ApiError> {
+    auth(state, headers)?;
+    if let Some(admin) = state.store.session_admin(cookie(headers)) {
+        return Ok(admin);
+    }
+    let admins = state.store.admins()?;
+    if admins.len() == 1 {
+        return Ok(admins.into_iter().next().unwrap());
+    }
+    Err(unauthorized())
+}
+
+fn require_owner(state: &Shared, headers: &HeaderMap) -> Result<Admin, ApiError> {
+    let admin = require_admin(state, headers)?;
+    if admin.role == "owner" {
+        Ok(admin)
+    } else {
+        Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "Owner permission required".into(),
+        ))
+    }
+}
+
+fn admin_json(admin: &Admin) -> Value {
+    json!({
+        "id": admin.id,
+        "username": admin.username,
+        "role": admin.role,
+        "created_at": admin.created_at
+    })
+}
+
 fn session_response(
     state: &Shared,
     headers: &HeaderMap,
@@ -156,9 +189,20 @@ pub async fn bootstrap(State(s): State<Shared>, h: HeaderMap) -> ApiResult<Value
     entry(&s, &h)?;
     let c = s.store.config()?;
     let authenticated = s.store.authenticated(cookie(&h));
-    Ok(Json(
-        json!({"initialized":!c.password_hash.is_empty(),"authenticated":authenticated,"username":if authenticated {c.username} else {String::new()}}),
-    ))
+    let session = s.store.session_admin(cookie(&h));
+    let username = if authenticated {
+        session
+            .map(|a| a.username)
+            .or_else(|| c.admins.first().map(|a| a.username.clone()))
+            .unwrap_or_else(|| c.username.clone())
+    } else {
+        String::new()
+    };
+    Ok(Json(json!({
+        "initialized": !c.admins.is_empty() || !c.password_hash.is_empty(),
+        "authenticated": authenticated,
+        "username": username
+    })))
 }
 #[derive(Deserialize)]
 pub struct Credentials {
@@ -173,19 +217,28 @@ pub async fn setup(
     entry(&s, &h)?;
     name(&input.username)?;
     valid_password(&input.password)?;
-    if !s.store.config()?.password_hash.is_empty() {
+    let current = s.store.config()?;
+    if !current.admins.is_empty() || !current.password_hash.is_empty() {
         return Err(bad("Administrator is already initialized"));
     }
     let hash = tokio::task::spawn_blocking(move || password_hash(&input.password))
         .await
         .map_err(|_| bad("Password hashing failed"))??;
     let username = input.username.trim().to_owned();
+    let admin = Admin {
+        id: id(),
+        username: username.clone(),
+        password_hash: hash.clone(),
+        role: "owner".into(),
+        created_at: now(),
+    };
     s.store.update(|c| {
-        if !c.password_hash.is_empty() {
+        if !c.admins.is_empty() || !c.password_hash.is_empty() {
             return Err("Administrator is already initialized".into());
         }
         c.username = username.clone();
         c.password_hash = hash.clone();
+        c.admins.push(admin.clone());
         Ok(())
     })?;
     session_response(&s, &h, &username, &hash)
@@ -211,20 +264,25 @@ pub async fn login(
         }
         a.1 += 1;
     }
-    let c = s.store.config()?;
+    let Some(admin) = s.store.find_admin(input.username.trim())? else {
+        return Err(ApiError(
+            StatusCode::UNAUTHORIZED,
+            "Invalid credentials".into(),
+        ));
+    };
     let password = input.password;
-    let hash = c.password_hash.clone();
+    let hash = admin.password_hash.clone();
     let valid = tokio::task::spawn_blocking(move || verify(&password, &hash))
         .await
         .unwrap_or(false);
-    if input.username != c.username || !valid {
+    if !valid {
         return Err(ApiError(
             StatusCode::UNAUTHORIZED,
             "Invalid credentials".into(),
         ));
     }
     s.login_attempts.lock().unwrap().remove("admin");
-    session_response(&s, &h, &c.username, &c.password_hash)
+    session_response(&s, &h, &admin.username, &admin.password_hash)
 }
 pub async fn logout(State(s): State<Shared>, h: HeaderMap) -> Result<Response, ApiError> {
     auth(&s, &h)?;
@@ -628,7 +686,8 @@ pub async fn password(
     if input.new_password != input.confirm_password {
         return Err(bad("New password confirmation does not match"));
     }
-    let old_hash = s.store.config()?.password_hash;
+    let me = require_admin(&s, &h)?;
+    let old_hash = me.password_hash.clone();
     let expected_hash = old_hash.clone();
     let old = input.current_password;
     let hash = tokio::task::spawn_blocking(move || {
@@ -907,6 +966,153 @@ pub async fn stats(
     Ok(Json(
         json!({"summary":{"input_tokens":input,"output_tokens":output,"cached_tokens":cached,"uncached_tokens":input.saturating_sub(cached),"total_tokens":input+output,"cache_hit_rate":if input>0{cached as f64/input as f64*100.0}else{0.0},"rpm":live.len(),"tpm":live.iter().map(|l|l.usage.input_tokens+l.usage.output_tokens).sum::<u64>(),"total_requests":logs.len(),"success_rate":if n>0.0{successes as f64/n*100.0}else{0.0},"avg_latency_ms":if n>0.0{latency as f64/n}else{0.0},"cyber_count":cyber},"daily":daily.into_values().collect::<Vec<_>>(),"recent":recent,"accounts":{"total":c.accounts.len(),"healthy":healthy,"cooling":cooling},"keys":c.keys.len()}),
     ))
+}
+
+
+pub async fn me(State(s): State<Shared>, h: HeaderMap) -> ApiResult<Value> {
+    let admin = require_admin(&s, &h)?;
+    Ok(Json(admin_json(&admin)))
+}
+
+pub async fn admins_list(State(s): State<Shared>, h: HeaderMap) -> ApiResult<Value> {
+    require_admin(&s, &h)?;
+    let list: Vec<Value> = s.store.admins()?.iter().map(admin_json).collect();
+    Ok(Json(json!(list)))
+}
+
+#[derive(Deserialize)]
+pub struct AdminInput {
+    pub username: String,
+    pub password: String,
+    #[serde(default)]
+    pub role: Option<String>,
+}
+
+pub async fn admin_create(
+    State(s): State<Shared>,
+    h: HeaderMap,
+    Json(input): Json<AdminInput>,
+) -> ApiResult<Value> {
+    require_owner(&s, &h)?;
+    name(&input.username)?;
+    valid_password(&input.password)?;
+    let role = match input.role.as_deref() {
+        None | Some("") | Some("admin") => "admin".to_string(),
+        Some("owner") => "owner".to_string(),
+        _ => return Err(bad("Role must be owner or admin")),
+    };
+    let username = input.username.trim().to_owned();
+    let hash = tokio::task::spawn_blocking(move || password_hash(&input.password))
+        .await
+        .map_err(|_| bad("Password hashing failed"))??;
+    let admin = s.store.create_admin(&username, &hash, &role)?;
+    Ok(Json(admin_json(&admin)))
+}
+
+pub async fn admin_delete(
+    State(s): State<Shared>,
+    h: HeaderMap,
+    Path(id): Path<String>,
+) -> ApiResult<Value> {
+    let me = require_owner(&s, &h)?;
+    if me.id == id {
+        return Err(bad("You cannot delete your own account"));
+    }
+    let target = s
+        .store
+        .admins()?
+        .into_iter()
+        .find(|a| a.id == id)
+        .ok_or_else(|| bad("Administrator not found"))?;
+    if target.role == "owner" && s.store.owner_count()? <= 1 {
+        return Err(bad("Cannot delete the last owner"));
+    }
+    s.store.delete_admin(&id)?;
+    Ok(Json(json!({"ok": true})))
+}
+
+#[derive(Deserialize)]
+pub struct AdminPasswordInput {
+    pub new_password: String,
+}
+
+pub async fn admin_password(
+    State(s): State<Shared>,
+    h: HeaderMap,
+    Path(id): Path<String>,
+    Json(input): Json<AdminPasswordInput>,
+) -> ApiResult<Value> {
+    let me = require_admin(&s, &h)?;
+    if me.id != id && me.role != "owner" {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "Owner permission required".into(),
+        ));
+    }
+    valid_password(&input.new_password)?;
+    let hash = tokio::task::spawn_blocking(move || password_hash(&input.new_password))
+        .await
+        .map_err(|_| bad("Password hashing failed"))??;
+    s.store.set_admin_password(&id, hash)?;
+    Ok(Json(json!({"ok": true})))
+}
+
+pub async fn register(
+    State(s): State<Shared>,
+    h: HeaderMap,
+    Json(input): Json<AdminInput>,
+) -> Result<Response, ApiError> {
+    entry(&s, &h)?;
+    name(&input.username)?;
+    valid_password(&input.password)?;
+    let current = s.store.config()?;
+    let first = current.admins.is_empty() && current.password_hash.is_empty();
+    let role = if first {
+        "owner".to_string()
+    } else {
+        match input.role.as_deref() {
+            Some("owner") => "owner".to_string(),
+            _ => "admin".to_string(),
+        }
+    };
+    if !first {
+        let token_ok = std::env::var("REGISTER_TOKEN")
+            .ok()
+            .filter(|token| !token.is_empty())
+            .map(|token| {
+                h.get("x-register-token").and_then(|value| value.to_str().ok())
+                    == Some(token.as_str())
+            })
+            .unwrap_or(false);
+        if !token_ok {
+            require_owner(&s, &h)?;
+        }
+    }
+    let username = input.username.trim().to_owned();
+    let hash = tokio::task::spawn_blocking(move || password_hash(&input.password))
+        .await
+        .map_err(|_| bad("Password hashing failed"))??;
+    if first {
+        let admin = Admin {
+            id: id(),
+            username: username.clone(),
+            password_hash: hash.clone(),
+            role: "owner".into(),
+            created_at: now(),
+        };
+        s.store.update(|c| {
+            if !c.admins.is_empty() || !c.password_hash.is_empty() {
+                return Err("Administrator is already initialized".into());
+            }
+            c.username = username.clone();
+            c.password_hash = hash.clone();
+            c.admins.push(admin.clone());
+            Ok(())
+        })?;
+        return session_response(&s, &h, &username, &hash);
+    }
+    let admin = s.store.create_admin(&username, &hash, &role)?;
+    Ok(Json(admin_json(&admin)).into_response())
 }
 
 #[cfg(test)]
