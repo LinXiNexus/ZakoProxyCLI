@@ -38,6 +38,7 @@ import {
   Toggle,
 } from "./components";
 import type { Notice } from "./components";
+import { GroupSelect } from "./GroupSelect";
 
 export type PageProps = {
   state: State;
@@ -1495,6 +1496,10 @@ function KeyForm({
   const [error, setError] = useState("");
   async function submit(event: FormEvent) {
     event.preventDefault();
+    if (!state.groups.some((item) => item.id === group)) {
+      setError("请选择有效的所属分组");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -1538,22 +1543,7 @@ function KeyForm({
             placeholder="例如：开发环境"
           />
         </Field>
-        <Field label="所属分组">
-          <Select
-            value={group}
-            onChange={(event) => setGroup(event.target.value)}
-            required
-          >
-            <option value="" disabled>
-              选择分组
-            </option>
-            {state.groups.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        <GroupSelect value={group} groups={state.groups} onChange={setGroup} disabled={busy} />
         {!state.groups.length && <ErrorBox message="请先创建分组" />}
         {relayKey && (
           <Toggle checked={enabled} onChange={setEnabled} label="启用此密钥" />

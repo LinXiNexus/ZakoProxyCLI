@@ -159,7 +159,7 @@ impl Default for Settings {
             failure_threshold: 2,
             cooldown_seconds: 60,
             request_timeout_seconds: 120,
-            retention_days: 90,
+            retention_days: 7,
         }
     }
 }
@@ -189,10 +189,36 @@ pub struct Config {
     pub keys: Vec<ApiKey>,
 }
 #[derive(Clone, Serialize, Deserialize, Default, Debug)]
+#[serde(from = "UsageInput")]
 pub struct Usage {
     pub input_tokens: u64,
     pub output_tokens: u64,
     pub cached_tokens: u64,
+    #[serde(default)]
+    pub cache_creation_input_tokens: u64,
+    #[serde(default)]
+    pub cache_read_input_tokens: u64,
+}
+#[derive(Deserialize)]
+struct UsageInput {
+    input_tokens: u64,
+    output_tokens: u64,
+    cached_tokens: u64,
+    #[serde(default)]
+    cache_creation_input_tokens: u64,
+    #[serde(default)]
+    cache_read_input_tokens: Option<u64>,
+}
+impl From<UsageInput> for Usage {
+    fn from(input: UsageInput) -> Self {
+        Self {
+            input_tokens: input.input_tokens,
+            output_tokens: input.output_tokens,
+            cached_tokens: input.cached_tokens,
+            cache_creation_input_tokens: input.cache_creation_input_tokens,
+            cache_read_input_tokens: input.cache_read_input_tokens.unwrap_or(input.cached_tokens),
+        }
+    }
 }
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct RequestLog {
@@ -204,9 +230,23 @@ pub struct RequestLog {
     pub protocol: String,
     pub status: u16,
     pub latency_ms: u64,
+    #[serde(default)]
+    pub first_token_ms: Option<u64>,
     pub usage: Usage,
     pub cyber: bool,
     pub attempts: u32,
+    #[serde(default)]
+    pub request_path: String,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+pub const LOG_PAGE_SIZE: u64 = 20;
+pub struct LogPage {
+    pub items: Vec<RequestLog>,
+    pub page: u64,
+    pub total: u64,
+    pub total_pages: u64,
+    pub retention_days: u32,
 }
 pub struct Store {
     db: Mutex<Connection>,
@@ -237,6 +277,14 @@ fn insert_session(db: &Connection, raw: &str, admin_id: Option<&str>) -> Result<
     db.execute(
         "INSERT OR REPLACE INTO sessions(hash, expires, admin_id) VALUES(?1,?2,?3)",
         params![digest(raw), now() + 86400, admin_id],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+fn prune_logs(db: &Connection, retention_days: u32) -> Result<()> {
+    db.execute(
+        "DELETE FROM requests WHERE timestamp < ?1",
+        [now() - i64::from(retention_days.max(1)) * 86400],
     )
     .map_err(|e| e.to_string())?;
     Ok(())
@@ -300,6 +348,7 @@ impl Store {
             });
             write_config(&db, &migrated)?;
         }
+        prune_logs(&db, read_config(&db)?.settings.retention_days)?;
         Ok(Self {
             db: Mutex::new(db),
             cipher,
@@ -337,7 +386,19 @@ impl Store {
         let tx = db.transaction().map_err(|e| e.to_string())?;
         let mut cfg = read_config(&tx)?;
         let result = change(&mut cfg)?;
+        // Keep the legacy single-account fields in sync with the admins list,
+        // mirroring the migration performed in `open`.
+        if cfg.admins.is_empty() && !cfg.username.is_empty() && !cfg.password_hash.is_empty() {
+            cfg.admins.push(Admin {
+                id: id(),
+                username: cfg.username.clone(),
+                password_hash: cfg.password_hash.clone(),
+                role: "owner".into(),
+                created_at: now(),
+            });
+        }
         write_config(&tx, &cfg)?;
+        prune_logs(&tx, cfg.settings.retention_days)?;
         tx.commit().map_err(|e| e.to_string())?;
         Ok(result)
     }
@@ -565,7 +626,7 @@ impl Store {
             .map_err(|e| e.to_string())?;
         Ok(())
     }
-    pub fn log(&self, entry: &RequestLog, retention: u32) -> Result<()> {
+    pub fn log(&self, entry: &RequestLog, _retention: u32) -> Result<()> {
         let db = self.db.lock().map_err(|e| e.to_string())?;
         db.execute(
             "INSERT INTO requests VALUES(?1,?2,?3)",
@@ -576,16 +637,14 @@ impl Store {
             ],
         )
         .map_err(|e| e.to_string())?;
-        db.execute(
-            "DELETE FROM requests WHERE timestamp < ?1",
-            [now() - retention as i64 * 86400],
-        )
-        .map_err(|e| e.to_string())?;
+        // An in-flight request may have captured an older retention setting.
+        prune_logs(&db, read_config(&db)?.settings.retention_days)?;
         Ok(())
     }
     pub fn logs(&self, from: i64, to: i64) -> Result<Vec<RequestLog>> {
         let db = self.db.lock().map_err(|e| e.to_string())?;
-        let mut query = db.prepare("SELECT value FROM requests WHERE timestamp>=?1 AND timestamp<=?2 ORDER BY timestamp DESC").map_err(|e| e.to_string())?;
+        prune_logs(&db, read_config(&db)?.settings.retention_days)?;
+        let mut query = db.prepare("SELECT value FROM requests WHERE timestamp>=?1 AND timestamp<=?2 ORDER BY timestamp DESC, id DESC").map_err(|e| e.to_string())?;
         query
             .query_map(params![from, to], |row| row.get::<_, String>(0))
             .map_err(|e| e.to_string())?
@@ -594,6 +653,60 @@ impl Store {
             })
             .collect()
     }
+    pub fn logs_page(&self, requested_page: u64) -> Result<LogPage> {
+        let db = self.db.lock().map_err(|e| e.to_string())?;
+        let retention_days = read_config(&db)?.settings.retention_days.max(1);
+        prune_logs(&db, retention_days)?;
+        let total: u64 = db
+            .query_row("SELECT COUNT(*) FROM requests", [], |row| row.get(0))
+            .map_err(|e| e.to_string())?;
+        let total_pages = total.div_ceil(LOG_PAGE_SIZE).max(1);
+        let page = requested_page.clamp(1, total_pages);
+        let mut query = db
+            .prepare(
+                "SELECT value FROM requests ORDER BY timestamp DESC, id DESC LIMIT ?1 OFFSET ?2",
+            )
+            .map_err(|e| e.to_string())?;
+        let items = query
+            .query_map(params![LOG_PAGE_SIZE, (page - 1) * LOG_PAGE_SIZE], |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(|e| e.to_string())?
+            .map(|row| {
+                serde_json::from_str(&row.map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+            })
+            .collect::<Result<Vec<RequestLog>>>()?;
+        Ok(LogPage {
+            items,
+            page,
+            total,
+            total_pages,
+            retention_days,
+        })
+    }
+    pub fn export_logs(&self) -> Result<(u32, Vec<RequestLog>)> {
+        let db = self.db.lock().map_err(|e| e.to_string())?;
+        let retention_days = read_config(&db)?.settings.retention_days.max(1);
+        prune_logs(&db, retention_days)?;
+        let mut query = db
+            .prepare("SELECT value FROM requests ORDER BY timestamp DESC, id DESC")
+            .map_err(|e| e.to_string())?;
+        let logs = query
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?
+            .map(|row| {
+                serde_json::from_str(&row.map_err(|e| e.to_string())?).map_err(|e| e.to_string())
+            })
+            .collect::<Result<Vec<RequestLog>>>()?;
+        Ok((retention_days, logs))
+    }
+    pub fn delete_logs(&self) -> Result<usize> {
+        self.db
+            .lock()
+            .map_err(|e| e.to_string())?
+            .execute("DELETE FROM requests", [])
+            .map_err(|e| e.to_string())
+    }
 }
 pub fn usage(value: &Value) -> Usage {
     let u = value
@@ -601,6 +714,27 @@ pub fn usage(value: &Value) -> Usage {
         .or_else(|| value.pointer("/response/usage"))
         .or_else(|| value.pointer("/message/usage"))
         .unwrap_or(value);
+    let cache_read_input_tokens = [
+        "/cache_read_input_tokens",
+        "/input_tokens_details/cached_tokens",
+        "/prompt_tokens_details/cached_tokens",
+        "/cached_tokens",
+    ]
+    .iter()
+    .find_map(|path| u.pointer(path).and_then(Value::as_u64))
+    .unwrap_or(0);
+    let cache_creation_input_tokens = [
+        "/cache_creation_input_tokens",
+        "/input_tokens_details/cache_creation_tokens",
+        "/input_tokens_details/cache_write_tokens",
+        "/prompt_tokens_details/cache_creation_tokens",
+        "/prompt_tokens_details/cache_write_tokens",
+        "/cache_creation_tokens",
+        "/cache_write_tokens",
+    ]
+    .iter()
+    .find_map(|path| u.pointer(path).and_then(Value::as_u64))
+    .unwrap_or(0);
     Usage {
         input_tokens: u["input_tokens"]
             .as_u64()
@@ -612,12 +746,9 @@ pub fn usage(value: &Value) -> Usage {
             .as_u64()
             .or(u["completion_tokens"].as_u64())
             .unwrap_or(0),
-        cached_tokens: u
-            .pointer("/input_tokens_details/cached_tokens")
-            .or_else(|| u.pointer("/prompt_tokens_details/cached_tokens"))
-            .or_else(|| u.get("cache_read_input_tokens"))
-            .and_then(Value::as_u64)
-            .unwrap_or(0),
+        cached_tokens: cache_read_input_tokens,
+        cache_creation_input_tokens,
+        cache_read_input_tokens,
     }
 }
 
@@ -720,6 +851,26 @@ mod tests {
             &serde_json::json!({"response":{"usage":{"input_tokens":100,"output_tokens":10,"input_tokens_details":{"cached_tokens":80}}}}),
         );
         assert_eq!(u.cached_tokens, 80);
+        assert_eq!(u.cache_read_input_tokens, 80);
+        assert_eq!(u.cache_creation_input_tokens, 0);
         assert_eq!(u.input_tokens, 100);
+    }
+    #[test]
+    fn usage_preserves_anthropic_cache_creation_and_read_counts() {
+        let u = usage(&serde_json::json!({"message":{"usage":{
+            "input_tokens":20,"cache_creation_input_tokens":30,
+            "cache_read_input_tokens":50,"output_tokens":7
+        }}}));
+        assert_eq!(u.input_tokens, 100);
+        assert_eq!(u.cache_creation_input_tokens, 30);
+        assert_eq!(u.cache_read_input_tokens, 50);
+        assert_eq!(u.cached_tokens, 50);
+        let old: Usage = serde_json::from_value(serde_json::json!({
+            "input_tokens":100,"output_tokens":7,"cached_tokens":50
+        }))
+        .unwrap();
+        assert_eq!(old.cache_creation_input_tokens, 0);
+        assert_eq!(old.cache_read_input_tokens, 50);
+        assert_eq!(old.cached_tokens, 50);
     }
 }

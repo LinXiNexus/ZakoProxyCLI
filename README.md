@@ -2,7 +2,7 @@
 
 简体中文 · [English](README.en.md) · [安全说明](SECURITY.md) · [API 契约](API_CONTRACT.md)
 
-基于 Rust 的自托管 Responses / Chat Completions / Anthropic Messages API 中转，提供适配 PC 和移动端的管理控制台、SQLite 持久化和 Docker Compose 部署。侧边栏包含仪表盘、分组管理、账号管理、密钥管理和系统设置。
+基于 Rust 的自托管 Responses / Chat Completions / Anthropic Messages API 中转，提供适配 PC 和移动端的管理控制台、SQLite 持久化和 Docker Compose 部署。侧边栏包含仪表盘、分组管理、账号管理、密钥管理、调用日志和系统设置。
 
 ## ⚠️ 免责声明 · Disclaimer
 
@@ -82,6 +82,14 @@ Compose 同时启动隔离的 `updater` 服务，不对宿主机发布端口。�
 
 旧版部署需先拉取本版本源码并执行一次上述 Compose 构建和启动命令，以安装更新器。使用自定义 Compose 项目名时，保持 `COMPOSE_PROJECT_NAME` 一致；不使用 Compose 或未配置更新器的本地开发环境只展示版本信息，不能在网页执行更新。更新代理镜像不会自行替换更新器或修改宿主机 Compose 文件；发布说明要求调整部署配置时仍需由管理员执行。
 
+### v0.8.0 DeepSeek API 兼容策略
+
+为全部五个 DeepSeek 精确模型档案组合一层共享的 API 适配提示，吸收 dsh-purge 的请求期提示组装与上下文连续性思路；策略仍按映射后的实际模型选择，并沿用现有 Responses / Compact、Chat Completions 和 Anthropic 注入链路。原 profile ID 与旧版配置识别规则保留，模型目录数量不变。适配层以当前请求实际携带的消息、工具和结果为准，不假设 Harness 本地文件、hook、审批、沙箱、跨请求记忆或权限，也不声称修改上游模型策略。来源版本、改编范围和 MIT 声明见 [profiles/dsh-purge/SOURCE.json](profiles/dsh-purge/SOURCE.json) 与 [third_party/dsh-purge/NOTICE.md](third_party/dsh-purge/NOTICE.md)。
+
+### v0.7.0 调用日志与请求链路修复
+
+密钥管理下新增独立调用日志，默认保留最近 7 天，每页 20 条，支持分页跳页、JSON 导出、清空日志、状态码和结构化 JSON/SSE 错误详情，并记录首字耗时及缓存读写 Token；仪表盘不再重复展示调用日志。Responses / Chat 流式工具请求现在在确认终止事件后及时释放并发槽；正常的长度限制或内容过滤不会误判为账号故障。账号冷却返回带真实剩余时间的 503，RPM 和并发本地限制保留 429，并提供机器可读错误原因。真实上游的 HTTP 状态、脱敏错误正文及 Retry-After 继续透传。
+
 ### v0.6.0 仓库改名后的首次升级
 
 官方仓库已改名为 ZakoProxyCLI。v0.5.0 及更早版本的更新器严格匹配旧 Release URL，因此仓库改名后网页检查或更新可能失败。请在原部署目录执行一次以下操作，同时替换 proxy 和 updater；保持原目录、Compose 项目名和数据卷不变。若本地修改导致拉取失败，请先处理冲突。
@@ -149,6 +157,10 @@ curl -N http://localhost:1990/v1/responses \
 ```
 
 `YOUR_REQUEST_MODEL_ID` 可以是已勾选的实际模型名或账号配置的请求模型别名。上下文压缩使用 `/v1/responses/compact`，实际支持情况由上游决定。Responses 和 Compact 先解析当前账号的实际模型，再优先选择该模型已勾选的专用策略；未匹配时按 `default_strategy_enabled` 决定是否使用默认策略。选中的一种正文前置到 `instructions`，原有客户端指令和其他字段保留；开关关闭且未匹配专用策略时不注入。Chat Completions 与 Anthropic Messages 使用相同规则，分别通过独立 `system` 消息和 `system` 字段注入。SSE 转发同时读取用量和完成状态，上游凭证反射会被脱敏。“破甲”配置属于可选指令文本，不保证抢占上游系统指令优先级、改变模型行为或消除拒答，实际结果取决于上游服务。
+
+工具调用与流结束：Responses 的 `response.completed`、Anthropic 的 `message_stop`、Chat 的 `[DONE]` 或全部 `choices` 的非空 `finish_reason` 都会释放账号并发槽，后续工具结果可立即续接；仍继续透传尾部用量。Chat 中转在完整 `finish_reason` 后正常 EOF、未发送 `[DONE]` 时也视为正常结束；仅部分 choice 结束或没有完成标志仍按截断处理。Responses 因 `max_output_tokens` / `content_filter` 正常停止不会累积账号故障，真正的错误、连接中断和截断仍触发故障冷却。
+
+排查 429：本地 RPM / 并发超限返回 `429`，错误 `code` 分别为 `rate_limit_exceeded` / `concurrency_limit_exceeded`；账号故障冷却返回 `503` 和 `upstream_cooldown`，`Retry-After` 为剩余冷却秒数（RPM 为当前分钟剩余秒数，并发为建议 1 秒）。这些本地调度错误含 `x-zako-error-source: local` 与请求 ID。真实上游 HTTP 错误标为 `upstream`，保留状态、脱敏正文及 `Retry-After`；不会通过更换状态码掩盖上游限流。
 
 ## 统计与存储
 

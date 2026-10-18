@@ -2,6 +2,8 @@ use crate::store::Group;
 use serde::{Deserialize, Serialize};
 use std::sync::OnceLock;
 
+const DEEPSEEK_API_ADAPTER: &str = include_str!("../profiles/dsh-purge/api-adapter.md");
+
 #[derive(Deserialize, Serialize)]
 pub struct Profile {
     pub id: String,
@@ -76,6 +78,10 @@ pub fn all() -> &'static [Profile] {
                 "A profile must target exactly one model family"
             );
             assert!(!profile.instruction.is_empty());
+            if family == "deepseek" {
+                profile.instruction.push_str("\n\n");
+                profile.instruction.push_str(DEEPSEEK_API_ADAPTER);
+            }
             profile.model_family = family.into();
         }
         profiles
@@ -89,7 +95,13 @@ pub fn find(id: &str) -> Option<&'static Profile> {
 // Only exact historical presets migrate; discarded custom fields never become active.
 pub(crate) fn legacy_profile(models: &[String], instruction: &str) -> Option<&'static Profile> {
     all().iter().find(|profile| {
-        instruction == profile.instruction
+        (instruction == profile.instruction
+            || (profile.model_family == "deepseek"
+                && profile
+                    .instruction
+                    .strip_suffix(DEEPSEEK_API_ADAPTER)
+                    .and_then(|previous| previous.strip_suffix("\n\n"))
+                    .is_some_and(|previous| instruction == previous)))
             && models.len() == profile.models.len()
             && models.iter().all(|model| profile.models.contains(model))
     })
@@ -166,7 +178,11 @@ mod tests {
             if is_hanshuang {
                 assert_eq!(
                     profile.instruction,
-                    include_str!("../profiles/hanshuang/system.md")
+                    format!(
+                        "{}\n\n{}",
+                        include_str!("../profiles/hanshuang/system.md"),
+                        DEEPSEEK_API_ADAPTER
+                    )
                 );
                 assert!(
                     profile
@@ -192,6 +208,62 @@ mod tests {
         assert!(models.contains("claude-fable-5-1"));
         assert!(models.contains("deepseek-v4-pro-0813"));
         assert!(models.contains("glm-5.3"));
+    }
+
+    #[test]
+    fn dsh_purge_adapter_is_composed_once_for_deepseek_and_keeps_legacy_profiles() {
+        use sha2::{Digest, Sha256};
+
+        let source: serde_json::Value =
+            serde_json::from_str(include_str!("../profiles/dsh-purge/SOURCE.json")).unwrap();
+        assert_eq!(
+            source["repository"],
+            "https://github.com/YuJunZhiXue/dsh-purge"
+        );
+        assert_eq!(
+            source["revision"],
+            "6c1d638d1bdcc45ede50fc30249c753d58122a51"
+        );
+        let normalized_adapter = DEEPSEEK_API_ADAPTER.replace("\r\n", "\n");
+        assert_eq!(
+            source["outputs"]["api-adapter.md"]["sha256"],
+            hex::encode(Sha256::digest(normalized_adapter.as_bytes()))
+        );
+        assert_eq!(
+            source["outputs"]["api-adapter.md"]["bytes"],
+            normalized_adapter.len()
+        );
+
+        let deepseek: Vec<_> = all()
+            .iter()
+            .filter(|profile| profile.model_family == "deepseek")
+            .collect();
+        assert_eq!(deepseek.len(), 5);
+        for profile in deepseek {
+            assert_eq!(
+                profile
+                    .instruction
+                    .matches("# DeepSeek API request adapter")
+                    .count(),
+                1
+            );
+            assert!(profile.instruction.ends_with(DEEPSEEK_API_ADAPTER));
+            let previous = profile
+                .instruction
+                .strip_suffix(DEEPSEEK_API_ADAPTER)
+                .unwrap()
+                .strip_suffix("\n\n")
+                .unwrap();
+            assert!(legacy_profile(&profile.models, previous).is_some());
+            assert!(legacy_profile(&profile.models, &profile.instruction).is_some());
+        }
+
+        let kimi = find("kimi-break-kimi-k2.7-code-v1").unwrap();
+        assert!(!kimi.instruction.contains("# DeepSeek API request adapter"));
+        assert_eq!(
+            find("coldcoffee-deepseek-v4.1-flash-v1").unwrap().models,
+            ["deepseek-v4.1-flash", "deepseek-4.1-flash"]
+        );
     }
 
     #[test]

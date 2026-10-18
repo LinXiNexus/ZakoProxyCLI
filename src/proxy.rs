@@ -19,6 +19,36 @@ use std::{
 
 const MAX_EVENT_BYTES: usize = 256 * 1024;
 const MAX_JSON_BYTES: usize = 4 * 1024 * 1024;
+const MAX_TRACKED_CHAT_CHOICES: u64 = 1024;
+const MAX_ERROR_BYTES: usize = 2048;
+
+fn route_for(protocol: &str) -> &'static str {
+    match protocol {
+        "compact" => "responses/compact",
+        "anthropic" => "messages",
+        "chat" => "chat/completions",
+        _ => "responses",
+    }
+}
+
+fn error_summary(message: &str, secrets: &[String]) -> String {
+    let mut message = message.to_owned();
+    for secret in secrets.iter().filter(|secret| !secret.is_empty()) {
+        message = message.replace(secret, "[redacted]");
+        if let Ok(encoded) = serde_json::to_string(secret) {
+            message = message.replace(&encoded[1..encoded.len() - 1], "[redacted]");
+        }
+    }
+    if message.len() > MAX_ERROR_BYTES {
+        let mut end = MAX_ERROR_BYTES - '…'.len_utf8();
+        while !message.is_char_boundary(end) {
+            end -= 1;
+        }
+        message.truncate(end);
+        message.push('…');
+    }
+    message
+}
 
 /// Endpoint roots may include /v1, but must not contain credentials or fragments.
 pub fn upstream_url(endpoint: &str, route: &str) -> Result<reqwest::Url, String> {
@@ -221,12 +251,100 @@ impl Drop for Admission {
     }
 }
 
-fn admit(state: &Shared, account: &Account) -> Option<Admission> {
-    let mut runtime = state.runtime.lock().ok()?;
+#[derive(Debug, Clone, Copy)]
+enum AdmissionError {
+    Cooldown(u64),
+    Concurrency,
+    Rpm(u64),
+    Unavailable,
+    Exhausted,
+}
+impl AdmissionError {
+    fn retry_after(self) -> u64 {
+        match self {
+            Self::Cooldown(seconds) | Self::Rpm(seconds) => seconds.max(1),
+            _ => 1,
+        }
+    }
+    fn response(self) -> Response {
+        let (status, code, message) = match self {
+            Self::Cooldown(_) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "upstream_cooldown",
+                "Upstream accounts are temporarily cooling down after failures",
+            ),
+            Self::Concurrency => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "concurrency_limit_exceeded",
+                "Account concurrency limit reached",
+            ),
+            Self::Rpm(_) => (
+                StatusCode::TOO_MANY_REQUESTS,
+                "rate_limit_exceeded",
+                "Account requests-per-minute limit reached",
+            ),
+            Self::Unavailable => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                "admission_unavailable",
+                "Account admission is temporarily unavailable",
+            ),
+            Self::Exhausted => (
+                StatusCode::BAD_GATEWAY,
+                "upstream_unavailable",
+                "Upstream request failed; no untried account is available",
+            ),
+        };
+        let mut response = (
+            status,
+            Json(json!({"error":{"message":message,"type":"proxy_error","code":code}})),
+        )
+            .into_response();
+        response.headers_mut().insert(
+            "retry-after",
+            HeaderValue::from_str(&self.retry_after().to_string()).unwrap(),
+        );
+        response
+            .headers_mut()
+            .insert("x-zako-error-source", HeaderValue::from_static("local"));
+        response
+    }
+}
+
+fn select_account<'a>(
+    state: &Shared,
+    accounts: &'a [Account],
+    tried: &HashSet<String>,
+) -> Result<(&'a Account, Admission), AdmissionError> {
+    let mut blocked = None;
+    for account in accounts
+        .iter()
+        .filter(|account| !tried.contains(&account.id))
+    {
+        match admit(state, account) {
+            Ok(admission) => return Ok((account, admission)),
+            Err(reason) => {
+                if blocked
+                    .is_none_or(|saved: AdmissionError| reason.retry_after() < saved.retry_after())
+                {
+                    blocked = Some(reason);
+                }
+            }
+        }
+    }
+    Err(blocked.unwrap_or(AdmissionError::Exhausted))
+}
+
+fn admit(state: &Shared, account: &Account) -> Result<Admission, AdmissionError> {
+    let mut runtime = state
+        .runtime
+        .lock()
+        .map_err(|_| AdmissionError::Unavailable)?;
     let runtime = runtime.entry(account.id.clone()).or_default();
     let now = store::now();
     if runtime.cooldown_until > now {
-        return None;
+        return Err(AdmissionError::Cooldown(
+            (runtime.cooldown_until - now) as u64,
+        ));
     }
     if runtime.cooldown_until != 0 {
         runtime.cooldown_until = 0;
@@ -236,14 +354,15 @@ fn admit(state: &Shared, account: &Account) -> Option<Admission> {
         runtime.window = now / 60;
         runtime.requests = 0;
     }
-    if (account.concurrency > 0 && runtime.active >= account.concurrency)
-        || (account.rpm > 0 && runtime.requests >= account.rpm)
-    {
-        return None;
+    if account.rpm > 0 && runtime.requests >= account.rpm {
+        return Err(AdmissionError::Rpm((60 - now.rem_euclid(60)) as u64));
+    }
+    if account.concurrency > 0 && runtime.active >= account.concurrency {
+        return Err(AdmissionError::Concurrency);
     }
     runtime.active = runtime.active.saturating_add(1);
     runtime.requests = runtime.requests.saturating_add(1);
-    Some(Admission {
+    Ok(Admission {
         state: state.clone(),
         account_id: account.id.clone(),
     })
@@ -268,29 +387,55 @@ struct LogGuard {
     state: Shared,
     entry: RequestLog,
     started: Instant,
+    finished: Option<Instant>,
     retention: u32,
+    secrets: Vec<String>,
 }
 impl LogGuard {
     fn new(state: &Shared, key: &ApiKey, model: &str, protocol: &str, retention: u32) -> Self {
         Self {
             state: state.clone(),
             started: Instant::now(),
+            finished: None,
             retention,
+            secrets: Vec::new(),
             entry: RequestLog {
                 id: store::id(),
                 timestamp: store::now(),
                 key_id: key.id.clone(),
                 model: model.into(),
                 protocol: protocol.into(),
+                request_path: format!("/v1/{}", route_for(protocol)),
                 status: 499,
                 ..Default::default()
             },
         }
     }
+    fn finish(&mut self) {
+        self.finished.get_or_insert_with(Instant::now);
+    }
+    fn set_error(&mut self, message: &str) {
+        self.entry.error = Some(error_summary(message, &self.secrets));
+    }
 }
 impl Drop for LogGuard {
     fn drop(&mut self) {
-        self.entry.latency_ms = self.started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+        self.entry.latency_ms = self
+            .finished
+            .unwrap_or_else(Instant::now)
+            .duration_since(self.started)
+            .as_millis()
+            .min(u128::from(u64::MAX)) as u64;
+        if self.entry.status >= 400 && self.entry.error.is_none() {
+            self.set_error(if self.entry.status == 499 {
+                "Request cancelled before the upstream response completed"
+            } else {
+                "Upstream request failed without an error detail"
+            });
+        }
+        if let Some(message) = &self.entry.error {
+            self.entry.error = Some(error_summary(message, &self.secrets));
+        }
         if let Err(error) = self.state.store.log(&self.entry, self.retention) {
             tracing::error!(request_id = %self.entry.id, %error, "Could not record proxy request");
         }
@@ -314,8 +459,22 @@ async fn forward(state: Shared, headers: HeaderMap, body: Value, protocol: &str)
         protocol,
         config.settings.retention_days,
     );
+    for name in ["authorization", "x-api-key"] {
+        if let Some(value) = headers.get(name).and_then(|value| value.to_str().ok()) {
+            let value = if name == "authorization" {
+                value
+                    .split_once(' ')
+                    .map(|(_, token)| token)
+                    .unwrap_or(value)
+            } else {
+                value
+            };
+            log.secrets.push(value.to_owned());
+        }
+    }
     if !body.is_object() || model.is_empty() {
         log.entry.status = 400;
+        log.set_error("A JSON object with a nonempty model is required");
         return error(
             StatusCode::BAD_REQUEST,
             "A JSON object with a nonempty model is required",
@@ -335,6 +494,7 @@ async fn forward(state: Shared, headers: HeaderMap, body: Value, protocol: &str)
     accounts.sort_by(|a, b| a.priority.cmp(&b.priority).then_with(|| a.id.cmp(&b.id)));
     if accounts.is_empty() {
         log.entry.status = 503;
+        log.set_error("No account supports this group, model, and protocol");
         return error(
             StatusCode::SERVICE_UNAVAILABLE,
             "No account supports this group, model, and protocol",
@@ -344,22 +504,36 @@ async fn forward(state: Shared, headers: HeaderMap, body: Value, protocol: &str)
     let mut reserved = None;
     let attempts = config.settings.max_retries.saturating_add(1);
     for _ in 0..attempts {
-        let selected = reserved.take().or_else(|| {
-            accounts
-                .iter()
-                .filter(|account| !tried.contains(&account.id))
-                .find_map(|account| admit(&state, account).map(|admission| (account, admission)))
-        });
-        let Some((account, admission)) = selected else {
-            log.entry.status = if log.entry.attempts == 0 { 429 } else { 502 };
-            let mut response = error(
-                StatusCode::from_u16(log.entry.status).unwrap(),
-                "No upstream account is currently available",
-            );
-            response
-                .headers_mut()
-                .insert("retry-after", HeaderValue::from_static("1"));
-            return response;
+        let selected = reserved
+            .take()
+            .map(Ok)
+            .unwrap_or_else(|| select_account(&state, &accounts, &tried));
+        let (account, admission) = match selected {
+            Ok(selected) => selected,
+            Err(reason) => {
+                let mut response = reason.response();
+                log.entry.status = response.status().as_u16();
+                if !matches!(reason, AdmissionError::Exhausted) || log.entry.error.is_none() {
+                    log.set_error(match reason {
+                        AdmissionError::Cooldown(_) => {
+                            "Upstream accounts are temporarily cooling down after failures"
+                        }
+                        AdmissionError::Concurrency => "Account concurrency limit reached",
+                        AdmissionError::Rpm(_) => "Account requests-per-minute limit reached",
+                        AdmissionError::Unavailable => {
+                            "Account admission is temporarily unavailable"
+                        }
+                        AdmissionError::Exhausted => {
+                            "Upstream request failed; no untried account is available"
+                        }
+                    });
+                }
+                response.headers_mut().insert(
+                    "x-request-id",
+                    HeaderValue::from_str(&log.entry.id).unwrap(),
+                );
+                return response;
+            }
         };
         let actual_model = account.actual_model(&model).unwrap();
         // Rebuild each attempt from the original request: account mappings can differ on failover.
@@ -372,22 +546,20 @@ async fn forward(state: Shared, headers: HeaderMap, body: Value, protocol: &str)
         };
         if let Err(message) = instruction_result {
             log.entry.status = 400;
+            log.set_error(message);
             return error(StatusCode::BAD_REQUEST, message);
         }
         tried.insert(account.id.clone());
         log.entry.attempts += 1;
         log.entry.account_id = account.id.clone();
         log.entry.status = 499;
-        let route = match protocol {
-            "compact" => "responses/compact",
-            "anthropic" => "messages",
-            "chat" => "chat/completions",
-            _ => "responses",
-        };
+        log.entry.error = None;
+        let route = route_for(protocol);
         let url = match upstream_url(&account.endpoint, route) {
             Ok(url) => url,
             Err(_) => {
                 log.entry.status = 502;
+                log.set_error("Invalid upstream endpoint configuration");
                 health(&state, &account.id, &config.settings, false);
                 continue;
             }
@@ -396,14 +568,17 @@ async fn forward(state: Shared, headers: HeaderMap, body: Value, protocol: &str)
             Ok(secret) => secret,
             Err(_) => {
                 log.entry.status = 502;
+                log.set_error("Could not decrypt the upstream API key");
                 health(&state, &account.id, &config.settings, false);
                 continue;
             }
         };
+        log.secrets.push(secret.clone());
         let client = match crate::network::account_client(&state, account) {
             Ok(client) => client,
             Err(_) => {
                 log.entry.status = 502;
+                log.set_error("Could not configure the upstream network client");
                 health(&state, &account.id, &config.settings, false);
                 continue;
             }
@@ -442,8 +617,15 @@ async fn forward(state: Shared, headers: HeaderMap, body: Value, protocol: &str)
         }
         let upstream = match request.send().await {
             Ok(response) => response,
-            Err(_) => {
+            Err(cause) => {
                 log.entry.status = 502;
+                log.set_error(if cause.is_timeout() {
+                    "Upstream request timed out before response headers"
+                } else if cause.is_connect() {
+                    "Could not connect to the upstream server"
+                } else {
+                    "Upstream request transport failed before response headers"
+                });
                 health(&state, &account.id, &config.settings, false);
                 continue;
             }
@@ -459,16 +641,16 @@ async fn forward(state: Shared, headers: HeaderMap, body: Value, protocol: &str)
         if retryable {
             health(&state, &account.id, &config.settings, false);
             if log.entry.attempts < attempts {
-                reserved = accounts
-                    .iter()
-                    .filter(|item| !tried.contains(&item.id))
-                    .find_map(|item| admit(&state, item).map(|admission| (item, admission)));
+                reserved = select_account(&state, &accounts, &tried).ok();
                 if reserved.is_some() {
                     continue;
                 }
             }
         }
         let mut response_headers = HeaderMap::new();
+        if !status.is_success() {
+            response_headers.insert("x-zako-error-source", HeaderValue::from_static("upstream"));
+        }
         for name in ["content-type", "x-request-id", "request-id", "retry-after"] {
             if let Some(value) = upstream.headers().get(name) {
                 // An upstream must not reflect its credential through response headers.
@@ -496,40 +678,83 @@ async fn forward(state: Shared, headers: HeaderMap, body: Value, protocol: &str)
         let account_id = account.id.clone();
         let stream_state = state.clone();
         log.entry.status = 499;
+        let chat_choices =
+            (protocol == "chat").then(|| body.get("n").and_then(Value::as_u64).unwrap_or(1).max(1));
         let output = async_stream::stream! {
-            let _admission = admission;
+            let mut admission = Some(admission);
             let mut log = log;
-            let mut observer = Observer::new(sse);
+            let mut observer = Observer::new(sse, chat_choices);
+            observer.secrets = log.secrets.clone();
+            observer.http_error = !status.is_success();
             let mut redactor = SecretFilter::new(secret);
             let mut stream = upstream.bytes_stream();
             let mut transport_failed = false;
-            let mut health_recorded = false;
+            let mut health_recorded = None;
             while let Some(chunk) = stream.next().await {
                 match chunk {
                     Ok(chunk) => {
                         observer.feed(&chunk);
                         log.entry.usage = observer.usage.clone();
                         log.entry.cyber = observer.cyber;
-                        if status.is_success() && (observer.completed || observer.failed) && !health_recorded {
+                        if observer.content_seen && log.entry.first_token_ms.is_none() {
+                            log.entry.first_token_ms = Some(log.started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64);
+                        }
+                        if let Some(message) = &observer.error {
+                            log.set_error(message);
+                        }
+                        if status.is_success() && (observer.completed || observer.failed) {
                             log.entry.status = if observer.failed { 502 } else { status.as_u16() };
-                            health(&stream_state, &account_id, &settings, !observer.failed);
-                            health_recorded = true;
+                            let healthy = !observer.failed;
+                            if health_recorded.is_none() || (health_recorded == Some(true) && !healthy) {
+                                health(&stream_state, &account_id, &settings, healthy);
+                                health_recorded = Some(healthy);
+                            }
+                        }
+                        if observer.completed || observer.failed {
+                            // A terminal protocol event ends model work even if the relay keeps HTTP open.
+                            if !status.is_success() {
+                                log.entry.status = status.as_u16();
+                            }
+                            log.finish();
+                            admission.take();
                         }
                         let chunk = redactor.feed(&chunk);
                         if !chunk.is_empty() { yield Ok::<Bytes, std::io::Error>(chunk); }
                     }
-                    Err(_) => { transport_failed = true; break; }
+                    Err(cause) => {
+                        transport_failed = true;
+                        if !(sse && (observer.completed || observer.failed)) {
+                            log.set_error(if cause.is_timeout() { "Upstream response timed out" } else { "Upstream response transport failed" });
+                        }
+                        break;
+                    }
                 }
             }
             observer.finish();
+            log.finish();
+            if observer.content_seen && log.entry.first_token_ms.is_none() {
+                log.entry.first_token_ms = Some(log.started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64);
+            }
+            if let Some(message) = &observer.error {
+                log.set_error(message);
+            }
             log.entry.usage = observer.usage;
             log.entry.cyber = observer.cyber;
             let transport_failed = transport_failed && !(sse && (observer.completed || observer.failed));
             let incomplete = sse && status.is_success() && !observer.completed && !observer.failed;
             log.entry.status = if transport_failed || incomplete || (status.is_success() && observer.failed) { 502 } else { status.as_u16() };
-            if status.is_success() && !health_recorded {
-                health(&stream_state, &account_id, &settings, log.entry.status < 400);
+            if incomplete {
+                log.set_error("Upstream event stream ended before a terminal event");
+            } else if observer.failed && log.entry.error.is_none() {
+                log.set_error("Upstream reported a failed response without an error detail");
+            } else if !status.is_success() && log.entry.error.is_none() {
+                log.set_error(&format!("Upstream HTTP {} {}", status.as_u16(), status.canonical_reason().unwrap_or("error")));
             }
+            let healthy = log.entry.status < 400;
+            if status.is_success() && (health_recorded.is_none() || (health_recorded == Some(true) && !healthy)) {
+                health(&stream_state, &account_id, &settings, healthy);
+            }
+            admission.take();
             let tail = redactor.finish();
             if !tail.is_empty() { yield Ok(tail); }
             if transport_failed || incomplete {
@@ -542,7 +767,105 @@ async fn forward(state: Shared, headers: HeaderMap, body: Value, protocol: &str)
         return response;
     }
     log.entry.status = 502;
+    if log.entry.error.is_none() {
+        log.set_error("Upstream request failed; no successful account attempt");
+    }
     error(StatusCode::BAD_GATEWAY, "Upstream request failed")
+}
+
+fn has_content_delta(value: &Value, event_name: &str) -> bool {
+    let nonempty = |value: Option<&Value>| {
+        value
+            .and_then(Value::as_str)
+            .is_some_and(|text| !text.is_empty())
+    };
+    match value
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or(event_name)
+    {
+        "response.output_text.delta"
+        | "response.reasoning_text.delta"
+        | "response.reasoning_summary_text.delta"
+        | "response.function_call_arguments.delta"
+        | "response.refusal.delta" => {
+            return nonempty(value.get("delta"));
+        }
+        "content_block_delta" => {
+            let delta = value.get("delta");
+            return ["text", "thinking", "partial_json"]
+                .iter()
+                .any(|key| nonempty(delta.and_then(|delta| delta.get(*key))));
+        }
+        _ => {}
+    }
+    value
+        .get("choices")
+        .and_then(Value::as_array)
+        .is_some_and(|choices| {
+            choices.iter().any(|choice| {
+                let Some(delta) = choice.get("delta") else {
+                    return false;
+                };
+                if ["content", "reasoning", "reasoning_content", "refusal"]
+                    .iter()
+                    .any(|key| nonempty(delta.get(*key)))
+                {
+                    return true;
+                }
+                if delta
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .is_some_and(|blocks| blocks.iter().any(|block| nonempty(block.get("text"))))
+                {
+                    return true;
+                }
+                let function_has_content = |function: &Value| {
+                    nonempty(function.get("name")) || nonempty(function.get("arguments"))
+                };
+                delta.get("function_call").is_some_and(function_has_content)
+                    || delta
+                        .get("tool_calls")
+                        .and_then(Value::as_array)
+                        .is_some_and(|tools| {
+                            tools
+                                .iter()
+                                .any(|tool| tool.get("function").is_some_and(function_has_content))
+                        })
+            })
+        })
+}
+
+// Retain only explicit error fields, never the whole request or successful response body.
+fn response_error(value: &Value, event_name: &str, http_error: bool) -> Option<String> {
+    let response = value.get("response").unwrap_or(value);
+    let error = value
+        .get("error")
+        .filter(|error| !error.is_null())
+        .or_else(|| response.get("error").filter(|error| !error.is_null()))
+        .or_else(|| {
+            (http_error
+                || event_name == "error"
+                || value.get("type").and_then(Value::as_str) == Some("error"))
+            .then_some(value)
+        })?;
+    if let Some(message) = error.as_str().filter(|message| !message.trim().is_empty()) {
+        return Some(message.to_owned());
+    }
+    let scalar = |key: &str| {
+        error.get(key).and_then(|value| match value {
+            Value::String(text) if !text.trim().is_empty() => Some(text.clone()),
+            Value::Number(number) => Some(number.to_string()),
+            _ => None,
+        })
+    };
+    let code = scalar("code").or_else(|| scalar("type"));
+    let message = scalar("message");
+    match (code, message) {
+        (Some(code), Some(message)) => Some(format!("{code}: {message}")),
+        (Some(code), None) => Some(code),
+        (None, message) => message,
+    }
 }
 
 // Keep only one bounded event and a small marker window, never request/response content in logs.
@@ -560,9 +883,15 @@ struct Observer {
     usage: Usage,
     completed: bool,
     failed: bool,
+    content_seen: bool,
+    error: Option<String>,
+    secrets: Vec<String>,
+    http_error: bool,
+    chat_choices: Option<u64>,
+    finished_choices: BTreeSet<u64>,
 }
 impl Observer {
-    fn new(sse: bool) -> Self {
+    fn new(sse: bool, chat_choices: Option<u64>) -> Self {
         Self {
             sse,
             line: Vec::new(),
@@ -577,6 +906,13 @@ impl Observer {
             usage: Usage::default(),
             completed: false,
             failed: false,
+            content_seen: false,
+            error: None,
+            secrets: Vec::new(),
+            http_error: false,
+            // Larger requests still use [DONE]; avoid unbounded state from arbitrary n values.
+            chat_choices: chat_choices.filter(|expected| *expected <= MAX_TRACKED_CHAT_CHOICES),
+            finished_choices: BTreeSet::new(),
         }
     }
     fn feed(&mut self, bytes: &[u8]) {
@@ -624,13 +960,15 @@ impl Observer {
         if line.is_empty() {
             match self.event_name.as_str() {
                 "response.completed" | "message_stop" => self.completed = true,
-                "response.failed" | "response.incomplete" | "error" => self.failed = true,
+                "response.failed" | "error" => self.failed = true,
                 _ => {}
             }
-            self.event_name.clear();
+            let event_name = std::mem::take(&mut self.event_name);
             if !self.oversized {
                 let data = std::mem::take(&mut self.data);
-                self.event(&data);
+                self.event(&data, &event_name);
+            } else if event_name == "response.incomplete" {
+                self.failed = true;
             }
             self.data.clear();
             self.oversized = false;
@@ -649,7 +987,7 @@ impl Observer {
             }
         }
     }
-    fn event(&mut self, data: &[u8]) {
+    fn event(&mut self, data: &[u8], event_name: &str) {
         if data.trim_ascii() == b"[DONE]" {
             self.completed = true;
             return;
@@ -659,19 +997,69 @@ impl Observer {
             self.usage.input_tokens = self.usage.input_tokens.max(usage.input_tokens);
             self.usage.output_tokens = self.usage.output_tokens.max(usage.output_tokens);
             self.usage.cached_tokens = self.usage.cached_tokens.max(usage.cached_tokens);
+            self.usage.cache_creation_input_tokens = self
+                .usage
+                .cache_creation_input_tokens
+                .max(usage.cache_creation_input_tokens);
+            self.usage.cache_read_input_tokens = self
+                .usage
+                .cache_read_input_tokens
+                .max(usage.cache_read_input_tokens);
+            if self.sse && has_content_delta(&value, event_name) {
+                self.content_seen = true;
+            }
+            if let Some(message) = response_error(&value, event_name, self.http_error) {
+                self.error = Some(error_summary(&message, &self.secrets));
+            }
             match value.get("type").and_then(Value::as_str) {
                 Some("response.completed" | "message_stop") => self.completed = true,
-                Some("response.failed" | "response.incomplete" | "error") => self.failed = true,
+                Some("response.failed" | "error") => self.failed = true,
                 _ => {}
             }
+            let response = value.get("response").unwrap_or(&value);
+            let incomplete = event_name == "response.incomplete"
+                || value.get("type").and_then(Value::as_str) == Some("response.incomplete")
+                || response.get("status").and_then(Value::as_str) == Some("incomplete");
+            if incomplete {
+                // Token limits and filtering terminate this response, not the account's health.
+                if matches!(
+                    response
+                        .pointer("/incomplete_details/reason")
+                        .and_then(Value::as_str),
+                    Some("max_output_tokens" | "content_filter")
+                ) {
+                    self.completed = true;
+                } else {
+                    self.failed = true;
+                }
+            }
             if value.get("error").is_some_and(|error| !error.is_null())
-                || matches!(
-                    value.get("status").and_then(Value::as_str),
-                    Some("failed" | "incomplete")
-                )
+                || response.get("error").is_some_and(|error| !error.is_null())
+                || response.get("status").and_then(Value::as_str) == Some("failed")
             {
                 self.failed = true;
             }
+            if let Some(expected) = self.chat_choices
+                && let Some(choices) = value.get("choices").and_then(Value::as_array)
+            {
+                for choice in choices {
+                    if let Some(index) = choice.get("index").and_then(Value::as_u64)
+                        && index < expected
+                        && choice
+                            .get("finish_reason")
+                            .and_then(Value::as_str)
+                            .is_some_and(|reason| !reason.is_empty())
+                    {
+                        self.finished_choices.insert(index);
+                    }
+                }
+                if self.finished_choices.len() as u64 == expected {
+                    self.completed = true;
+                }
+            }
+        } else if event_name == "response.incomplete" {
+            // A malformed terminal event must not hold a concurrency slot indefinitely.
+            self.failed = true;
         }
     }
     fn finish(&mut self) {
@@ -681,11 +1069,12 @@ impl Observer {
             }
             if !self.oversized {
                 let data = std::mem::take(&mut self.data);
-                self.event(&data);
+                let event_name = std::mem::take(&mut self.event_name);
+                self.event(&data, &event_name);
             }
         } else if !self.json_oversized {
             let data = std::mem::take(&mut self.json);
-            self.event(&data);
+            self.event(&data, "");
         }
     }
 }
@@ -709,10 +1098,14 @@ impl SecretFilter {
         self.pending.extend_from_slice(bytes);
         let mut output = Vec::new();
         let mut index = 0;
-        while index + self.secret.len() <= self.pending.len() {
-            if self.pending[index..].starts_with(&self.secret) {
+        while index < self.pending.len() {
+            let remaining = &self.pending[index..];
+            if remaining.starts_with(&self.secret) {
                 output.extend_from_slice(b"[redacted]");
                 index += self.secret.len();
+            } else if self.secret.starts_with(remaining) {
+                // Retain only a suffix that could actually be a split credential.
+                break;
             } else {
                 output.push(self.pending[index]);
                 index += 1;
@@ -857,10 +1250,99 @@ mod tests {
         assert_eq!(unchecked["instructions"], "Existing");
     }
     #[test]
+    fn first_token_ignores_metadata_and_detects_content_across_chunks() {
+        let metadata = b"data: {\"type\":\"response.created\"}\n\ndata: {\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}\n\ndata: {\"usage\":{\"output_tokens\":4}}\n\n: heartbeat\n\n";
+        for content in [
+            json!({"type":"response.output_text.delta","delta":"hello"}),
+            json!({"type":"response.reasoning_text.delta","delta":"think"}),
+            json!({"type":"response.reasoning_summary_text.delta","delta":"think"}),
+            json!({"type":"response.function_call_arguments.delta","delta":"{}"}),
+            json!({"choices":[{"delta":{"content":"hello"}}]}),
+            json!({"choices":[{"delta":{"reasoning_content":"think"}}]}),
+            json!({"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{}"}}]}}]}),
+            json!({"type":"content_block_delta","delta":{"type":"text_delta","text":"hello"}}),
+            json!({"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"think"}}),
+            json!({"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{}"}}),
+        ] {
+            let content = format!("data: {content}\n\n");
+            for split in 0..=content.len() {
+                let mut observer = Observer::new(true, None);
+                observer.feed(metadata);
+                assert!(!observer.content_seen);
+                observer.feed(&content.as_bytes()[..split]);
+                observer.feed(&content.as_bytes()[split..]);
+                assert!(observer.content_seen, "{content} at {split}");
+            }
+        }
+        for empty in [
+            json!({"type":"response.output_text.delta","delta":""}),
+            json!({"choices":[{"delta":{"role":"assistant","content":""}}]}),
+            json!({"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call","type":"function"}]}}]}),
+            json!({"type":"content_block_delta","delta":{"type":"signature_delta","signature":"signature"}}),
+        ] {
+            assert!(!has_content_delta(&empty, ""));
+        }
+    }
+
+    #[test]
+    fn cache_usage_merges_across_anthropic_message_events() {
+        let mut observer = Observer::new(true, None);
+        observer.feed(b"data: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10,\"cache_creation_input_tokens\":40,\"cache_read_input_tokens\":20}}}\n\n");
+        observer.feed(b"data: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":7}}\n\n");
+        observer.feed(b"data: {\"type\":\"message_stop\"}\n\n");
+        assert_eq!(observer.usage.input_tokens, 70);
+        assert_eq!(observer.usage.output_tokens, 7);
+        assert_eq!(observer.usage.cached_tokens, 20);
+        assert_eq!(observer.usage.cache_read_input_tokens, 20);
+        assert_eq!(observer.usage.cache_creation_input_tokens, 40);
+        assert!(observer.completed);
+    }
+
+    #[test]
+    fn json_and_sse_errors_are_bounded_and_redact_decoded_credentials() {
+        for sse in [false, true] {
+            let mut observer = Observer::new(sse, None);
+            observer.secrets = vec!["upstream-secret".into(), "proxy-key".into()];
+            let error = r#"{"error":{"code":"invalid_api_key","message":"upstream-\u0073ecret and proxy-\u006bey rejected"}}"#;
+            let bytes = if sse {
+                format!("event: error\ndata: {error}\n\n")
+            } else {
+                error.to_owned()
+            };
+            for chunk in bytes.as_bytes().chunks(3) {
+                observer.feed(chunk);
+            }
+            observer.finish();
+            assert_eq!(
+                observer.error.as_deref(),
+                Some("invalid_api_key: [redacted] and [redacted] rejected")
+            );
+            assert!(observer.failed);
+        }
+        assert_eq!(
+            response_error(
+                &json!({"error":{"code":429,"message":"Rate limited"}}),
+                "",
+                false
+            )
+            .as_deref(),
+            Some("429: Rate limited")
+        );
+        assert_eq!(
+            response_error(&json!({"message":"Bad input"}), "", true).as_deref(),
+            Some("Bad input")
+        );
+        assert!(response_error(&json!({"message":"success output"}), "", false).is_none());
+        let bounded = error_summary(&"错误".repeat(MAX_ERROR_BYTES), &[]);
+        assert!(bounded.len() <= MAX_ERROR_BYTES);
+        assert!(bounded.ends_with('…'));
+    }
+
+    #[test]
     fn sse_usage_survives_every_byte_boundary() {
         let bytes = b"event: response.output_text.delta\r\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"CYBER\"}\r\n\r\ndata: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":100,\"output_tokens\":8,\"input_tokens_details\":{\"cached_tokens\":60}}}}\n\n";
         for split in 0..=bytes.len() {
-            let mut observer = Observer::new(true);
+            let mut observer = Observer::new(true, None);
             observer.feed(&bytes[..split]);
             observer.feed(&bytes[split..]);
             observer.finish();
@@ -869,7 +1351,7 @@ mod tests {
             assert!(observer.completed);
             assert!(observer.cyber);
         }
-        let mut observer = Observer::new(true);
+        let mut observer = Observer::new(true, None);
         for byte in bytes {
             observer.feed(&[*byte]);
         }
@@ -878,7 +1360,7 @@ mod tests {
     }
     #[test]
     fn oversized_sse_events_are_bounded_and_next_event_works() {
-        let mut observer = Observer::new(true);
+        let mut observer = Observer::new(true, None);
         observer.feed(b"data: ");
         observer.feed(&vec![b'x'; MAX_EVENT_BYTES + 50]);
         observer.feed(b"\n\ndata: {\"type\":\"response.completed\"}\n\n");
@@ -901,6 +1383,58 @@ mod tests {
         }
     }
     #[test]
+    fn terminal_bytes_are_not_buffered_behind_an_unrelated_secret() {
+        let mut filter = SecretFilter::new("upstream-secret".into());
+        let terminal = b"data: [DONE]\n\n";
+        assert_eq!(filter.feed(terminal).as_ref(), terminal);
+        assert!(filter.finish().is_empty());
+        assert_eq!(filter.feed(b"before upstream-").as_ref(), b"before ");
+        assert_eq!(filter.feed(b"secret after").as_ref(), b"[redacted] after");
+    }
+
+    #[test]
+    fn normal_incomplete_response_variants_are_terminal_but_errors_still_fail() {
+        for sse in [false, true] {
+            for reason in ["max_output_tokens", "content_filter", "unknown"] {
+                let mut observer = Observer::new(sse, None);
+                let response =
+                    json!({"status":"incomplete","incomplete_details":{"reason":reason}});
+                let bytes = if sse {
+                    format!(
+                        "event: response.incomplete\ndata: {}\n\n",
+                        json!({"response":response})
+                    )
+                    .into_bytes()
+                } else {
+                    serde_json::to_vec(&response).unwrap()
+                };
+                observer.feed(&bytes);
+                observer.finish();
+                assert_eq!(observer.completed, reason != "unknown");
+                assert_eq!(observer.failed, reason == "unknown");
+            }
+        }
+        let mut observer = Observer::new(true, None);
+        observer.feed(b"event: response.incomplete\ndata: {\"response\":{\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"},\"error\":{\"code\":\"server_error\"}}}\n\n");
+        assert!(observer.failed);
+    }
+
+    #[test]
+    fn malformed_incomplete_event_is_terminal_and_choice_tracking_is_bounded() {
+        for data in ["", "not-json"] {
+            let mut observer = Observer::new(true, None);
+            observer.feed(format!("event: response.incomplete\ndata: {data}\n\n").as_bytes());
+            assert!(observer.failed);
+        }
+        let mut observer = Observer::new(true, Some(u64::MAX));
+        observer.feed(b"data: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\"}]}\n\n");
+        assert!(observer.finished_choices.is_empty());
+        assert!(!observer.completed);
+        observer.feed(b"data: [DONE]\n\n");
+        assert!(observer.completed);
+    }
+
+    #[test]
     fn admission_is_atomic_and_drop_releases_concurrency() {
         let dir = tempfile::tempdir().unwrap();
         let state = crate::new_app(dir.path(), dir.path().into()).unwrap();
@@ -911,11 +1445,11 @@ mod tests {
             ..Default::default()
         };
         let guard = admit(&state, &account).unwrap();
-        assert!(admit(&state, &account).is_none());
+        assert!(admit(&state, &account).is_err());
         drop(guard);
         let guard = admit(&state, &account).unwrap();
         drop(guard);
-        assert!(admit(&state, &account).is_none());
+        assert!(admit(&state, &account).is_err());
         assert_eq!(state.runtime.lock().unwrap()["a"].active, 0);
         health(
             &state,
@@ -995,6 +1529,81 @@ mod tests {
             .await
             .unwrap()
     }
+    #[tokio::test]
+    async fn local_and_transport_failures_have_safe_reasons_and_request_paths() {
+        let (_dir, state) = fixture(&["http://127.0.0.1:1".into()]);
+        let response = call(
+            state.clone(),
+            "/v1/responses/compact",
+            json!({"model":"chosen","input":"private prompt"}),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+        let logs = state.store.logs(0, store::now() + 10).unwrap();
+        assert_eq!(logs.len(), 1);
+        assert_eq!(logs[0].request_path, "/v1/responses/compact");
+        let reason = logs[0].error.as_deref().unwrap();
+        assert!(reason.contains("connect") || reason.contains("transport"));
+        assert!(!reason.contains("private prompt"));
+        assert!(logs[0].first_token_ms.is_none());
+        let response = call(
+            state.clone(),
+            "/v1/responses",
+            json!({"input":"private prompt"}),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let logs = state.store.logs(0, store::now() + 10).unwrap();
+        let local = logs.iter().find(|log| log.status == 400).unwrap();
+        assert_eq!(
+            local.error.as_deref(),
+            Some("A JSON object with a nonempty model is required")
+        );
+    }
+
+    #[tokio::test]
+    async fn streamed_first_token_excludes_metadata_and_terminal_freezes_duration() {
+        use axum::routing::post;
+        let (endpoint, _server) = serve(axum::Router::new().route("/v1/responses", post(|| async {
+            let output = async_stream::stream! {
+                yield Ok::<_, std::io::Error>(Bytes::from_static(b"data: {\"type\":\"response.created\"}\n\n"));
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                yield Ok(Bytes::from_static(b"data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n"));
+                yield Ok(Bytes::from_static(b"data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"output_tokens\":1}}}\n\n"));
+                tokio::time::sleep(Duration::from_secs(300)).await;
+            };
+            ([("content-type", "text/event-stream")], Body::from_stream(output))
+        }))).await;
+        let (_dir, state) = fixture(&[endpoint]);
+        let response = call(
+            state.clone(),
+            "/v1/responses",
+            json!({"model":"chosen","stream":true}),
+        )
+        .await;
+        let mut stream = response.into_body().into_data_stream();
+        let mut received = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            received.extend_from_slice(&chunk.unwrap());
+            if String::from_utf8_lossy(&received).contains("response.completed") {
+                break;
+            }
+        }
+        let completed_at = Instant::now();
+        tokio::time::sleep(Duration::from_millis(80)).await;
+        drop(stream);
+        let logs = state.store.logs(0, store::now() + 10).unwrap();
+        let log = &logs[0];
+        assert_eq!(log.status, 200);
+        assert!(log.error.is_none());
+        assert!(log.first_token_ms.unwrap() >= 40);
+        assert!(log.latency_ms >= log.first_token_ms.unwrap());
+        assert!(
+            log.latency_ms
+                < log.first_token_ms.unwrap() + completed_at.elapsed().as_millis() as u64
+        );
+    }
+
     #[tokio::test]
     async fn no_selected_models_never_routes_as_wildcard() {
         let (_dir, state) = fixture(&["http://127.0.0.1:1".into()]);

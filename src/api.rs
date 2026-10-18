@@ -1,6 +1,9 @@
 use crate::{
     ApiError, ApiResult, Shared, bad, profiles,
-    store::{Account, Admin, ApiKey, Group, Settings, Usage, digest, id, now, token},
+    store::{
+        Account, Admin, ApiKey, Config, Group, LOG_PAGE_SIZE, RequestLog, Settings, Usage, digest,
+        id, now, token,
+    },
     unauthorized,
 };
 use argon2::{
@@ -134,6 +137,74 @@ fn admin_json(admin: &Admin) -> Value {
     })
 }
 
+#[derive(Deserialize)]
+pub struct LogsQuery {
+    #[serde(default)]
+    page: u64,
+}
+fn log_items(logs: Vec<RequestLog>, config: &Config) -> Vec<Value> {
+    logs.into_iter()
+        .map(|log| {
+            let mut item = serde_json::to_value(&log).expect("RequestLog is serializable");
+            item["key_name"] = json!(
+                config
+                    .keys
+                    .iter()
+                    .find(|key| key.id == log.key_id)
+                    .map(|key| &key.name)
+            );
+            item["account_name"] = json!(
+                config
+                    .accounts
+                    .iter()
+                    .find(|account| account.id == log.account_id)
+                    .map(|account| &account.name)
+            );
+            item
+        })
+        .collect()
+}
+pub async fn logs(
+    State(s): State<Shared>,
+    h: HeaderMap,
+    Query(query): Query<LogsQuery>,
+) -> ApiResult<Value> {
+    auth(&s, &h)?;
+    let page = s.store.logs_page(query.page)?;
+    let config = s.store.config()?;
+    Ok(Json(json!({
+        "items": log_items(page.items, &config),
+        "page": page.page,
+        "page_size": LOG_PAGE_SIZE,
+        "total": page.total,
+        "total_pages": page.total_pages,
+        "retention_days": page.retention_days,
+    })))
+}
+pub async fn export_logs(State(s): State<Shared>, h: HeaderMap) -> Result<Response, ApiError> {
+    auth(&s, &h)?;
+    let (retention_days, logs) = s.store.export_logs()?;
+    let config = s.store.config()?;
+    Ok((
+        [
+            (
+                header::CONTENT_DISPOSITION,
+                "attachment; filename=\"request-logs.json\"",
+            ),
+            (header::CACHE_CONTROL, "no-store"),
+        ],
+        Json(json!({
+            "exported_at": now(),
+            "retention_days": retention_days,
+            "logs": log_items(logs, &config),
+        })),
+    )
+        .into_response())
+}
+pub async fn delete_logs(State(s): State<Shared>, h: HeaderMap) -> ApiResult<Value> {
+    auth(&s, &h)?;
+    Ok(Json(json!({"deleted": s.store.delete_logs()?})))
+}
 fn session_response(
     state: &Shared,
     headers: &HeaderMap,
@@ -537,7 +608,7 @@ pub async fn keys(State(s): State<Shared>, h: HeaderMap) -> ApiResult<Value> {
     let c = s.store.config()?;
     let logs = s.store.logs(0, now())?;
     Ok(Json(Value::Array(c.keys.iter().map(|k|{
-        let mut u=Usage::default();for l in logs.iter().filter(|l|l.key_id==k.id){u.input_tokens+=l.usage.input_tokens;u.output_tokens+=l.usage.output_tokens;u.cached_tokens+=l.usage.cached_tokens;}
+        let mut u=Usage::default();for l in logs.iter().filter(|l|l.key_id==k.id){u.input_tokens+=l.usage.input_tokens;u.output_tokens+=l.usage.output_tokens;u.cached_tokens+=l.usage.cached_tokens;u.cache_creation_input_tokens+=l.usage.cache_creation_input_tokens;u.cache_read_input_tokens+=l.usage.cache_read_input_tokens;}
         json!({"id":k.id,"name":k.name,"group_id":k.group_id,"prefix":k.prefix,"enabled":k.enabled,"created_at":k.created_at,"usage":u})
     }).collect())))
 }
@@ -922,6 +993,8 @@ pub async fn stats(
     let mut input = 0u64;
     let mut output = 0u64;
     let mut cached = 0u64;
+    let mut cache_creation = 0u64;
+    let mut cache_read = 0u64;
     let mut latency = 0u64;
     let mut successes = 0u64;
     let mut cyber = 0u64;
@@ -930,6 +1003,8 @@ pub async fn stats(
         input += l.usage.input_tokens;
         output += l.usage.output_tokens;
         cached += l.usage.cached_tokens;
+        cache_creation += l.usage.cache_creation_input_tokens;
+        cache_read += l.usage.cache_read_input_tokens;
         latency += l.latency_ms;
         let ok = (200..300).contains(&l.status);
         successes += u64::from(ok);
@@ -938,11 +1013,16 @@ pub async fn stats(
             .unwrap_or_default()
             .format("%Y-%m-%d")
             .to_string();
-        let d=daily.entry(date.clone()).or_insert(json!({"date":date,"input_tokens":0,"output_tokens":0,"cached_tokens":0,"total_requests":0,"success_count":0,"cyber_count":0}));
+        let d=daily.entry(date.clone()).or_insert(json!({"date":date,"input_tokens":0,"output_tokens":0,"cached_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"total_requests":0,"success_count":0,"cyber_count":0}));
         for (key, n) in [
             ("input_tokens", l.usage.input_tokens),
             ("output_tokens", l.usage.output_tokens),
             ("cached_tokens", l.usage.cached_tokens),
+            (
+                "cache_creation_input_tokens",
+                l.usage.cache_creation_input_tokens,
+            ),
+            ("cache_read_input_tokens", l.usage.cache_read_input_tokens),
             ("total_requests", 1),
             ("success_count", u64::from(ok)),
             ("cyber_count", u64::from(l.cyber)),
@@ -962,9 +1042,9 @@ pub async fn stats(
         .iter()
         .filter(|a| a.enabled && !runtime.get(&a.id).is_some_and(|r| r.cooldown_until > now()))
         .count();
-    let recent:Vec<Value>=logs.iter().take(100).map(|l|json!({"id":l.id,"created_at":l.timestamp,"model":l.model,"account_name":c.accounts.iter().find(|a|a.id==l.account_id).map(|a|&a.name),"key_name":c.keys.iter().find(|k|k.id==l.key_id).map(|k|&k.name),"status":l.status,"latency_ms":l.latency_ms,"input_tokens":l.usage.input_tokens,"output_tokens":l.usage.output_tokens,"cached_tokens":l.usage.cached_tokens,"cyber_count":u8::from(l.cyber),"attempts":l.attempts,"protocol":l.protocol})).collect();
+    let recent:Vec<Value>=logs.iter().take(100).map(|l|json!({"id":l.id,"created_at":l.timestamp,"model":l.model,"account_name":c.accounts.iter().find(|a|a.id==l.account_id).map(|a|&a.name),"key_name":c.keys.iter().find(|k|k.id==l.key_id).map(|k|&k.name),"status":l.status,"latency_ms":l.latency_ms,"first_token_ms":l.first_token_ms,"input_tokens":l.usage.input_tokens,"output_tokens":l.usage.output_tokens,"cached_tokens":l.usage.cached_tokens,"cache_creation_input_tokens":l.usage.cache_creation_input_tokens,"cache_read_input_tokens":l.usage.cache_read_input_tokens,"cyber_count":u8::from(l.cyber),"attempts":l.attempts,"protocol":l.protocol})).collect();
     Ok(Json(
-        json!({"summary":{"input_tokens":input,"output_tokens":output,"cached_tokens":cached,"uncached_tokens":input.saturating_sub(cached),"total_tokens":input+output,"cache_hit_rate":if input>0{cached as f64/input as f64*100.0}else{0.0},"rpm":live.len(),"tpm":live.iter().map(|l|l.usage.input_tokens+l.usage.output_tokens).sum::<u64>(),"total_requests":logs.len(),"success_rate":if n>0.0{successes as f64/n*100.0}else{0.0},"avg_latency_ms":if n>0.0{latency as f64/n}else{0.0},"cyber_count":cyber},"daily":daily.into_values().collect::<Vec<_>>(),"recent":recent,"accounts":{"total":c.accounts.len(),"healthy":healthy,"cooling":cooling},"keys":c.keys.len()}),
+        json!({"summary":{"input_tokens":input,"output_tokens":output,"cached_tokens":cached,"cache_creation_input_tokens":cache_creation,"cache_read_input_tokens":cache_read,"uncached_tokens":input.saturating_sub(cached),"total_tokens":input+output,"cache_hit_rate":if input>0{cached as f64/input as f64*100.0}else{0.0},"rpm":live.len(),"tpm":live.iter().map(|l|l.usage.input_tokens+l.usage.output_tokens).sum::<u64>(),"total_requests":logs.len(),"success_rate":if n>0.0{successes as f64/n*100.0}else{0.0},"avg_latency_ms":if n>0.0{latency as f64/n}else{0.0},"cyber_count":cyber},"daily":daily.into_values().collect::<Vec<_>>(),"recent":recent,"accounts":{"total":c.accounts.len(),"healthy":healthy,"cooling":cooling},"keys":c.keys.len()}),
     ))
 }
 

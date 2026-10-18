@@ -10,6 +10,7 @@ import {
   Database,
   Eye,
   EyeOff,
+  FileClock,
   FolderClosed,
   KeyRound,
   LayoutDashboard,
@@ -27,6 +28,7 @@ import { api, errorMessage } from "./api";
 import type { State, Group, Account, RelayKey, Settings, Profile } from "./api";
 import { Button, ErrorBox, Field, IconButton, Toast } from "./components";
 import { Dashboard } from "./Dashboard";
+import { RequestLogs } from "./RequestLogs";
 import { GroupsPage, AccountsPage, KeysPage } from "./Management";
 import { SettingsPage } from "./Settings";
 import { AgentChatPage, AgentSettingsPage } from "./Agent";
@@ -42,6 +44,7 @@ const navigation = [
   { id: "groups", label: "分组管理", icon: FolderClosed },
   { id: "accounts", label: "账号管理", icon: Database },
   { id: "keys", label: "密钥管理", icon: KeyRound },
+  { id: "logs", label: "调用日志", icon: FileClock },
   { id: "settings", label: "系统设置", icon: Settings2 },
 ] as const;
 type Page = (typeof navigation)[number]["id"];
@@ -447,11 +450,14 @@ export default function App() {
           )}
           {page === "personalize" && <PersonalizationPage notify={notify} />}
           {page === "dashboard" && (
-            <Dashboard revision={revision} notify={notify} state={state} />
+            <Dashboard revision={revision} notify={notify} />
           )}
           {page === "groups" && <GroupsPage {...props} />}
           {page === "accounts" && <AccountsPage {...props} />}
           {page === "keys" && <KeysPage {...props} />}
+          {page === "logs" && (
+            <RequestLogs revision={revision} notify={notify} state={state} />
+          )}
           {page === "settings" && (
             <SettingsPage
               {...props}

@@ -107,6 +107,8 @@ pub fn app(state: Shared) -> Router {
         .route("/api/updates", get(update::status).post(update::start))
         .route("/api/updates/latest", get(update::latest))
         .route("/api/stats", get(api::stats))
+        .route("/api/logs", get(api::logs).delete(api::delete_logs))
+        .route("/api/logs/export", get(api::export_logs))
         .route("/api/profiles", get(api::profiles))
         .route("/api/models/discover", post(api::discover))
         .route("/v1/models", get(proxy::models))

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  Activity,
   ArrowDownLeft,
   ArrowUpRight,
   CalendarDays,
@@ -32,11 +31,10 @@ import {
   errorMessage,
   number,
   percent,
-  time,
   tokenCount,
 } from "./api";
-import type { State, Stats } from "./api";
-import { Badge, Button, Empty, ErrorBox, IconButton } from "./components";
+import type { Stats } from "./api";
+import { Badge, Button, ErrorBox, IconButton } from "./components";
 import type { Notice } from "./components";
 
 function beginning(daysAgo: number) {
@@ -48,11 +46,9 @@ function beginning(daysAgo: number) {
 export function Dashboard({
   revision,
   notify,
-  state,
 }: {
   revision: number;
   notify: Notice;
-  state: State;
 }) {
   const [from, setFrom] = useState(beginning(6));
   const [to, setTo] = useState(beginning(0));
@@ -585,93 +581,6 @@ export function Dashboard({
           </div>
         </section>
       </div>
-      <section className="recent-section">
-        <div className="section-heading">
-          <div>
-            <h2>
-              <Activity size={17} />
-              最近请求<Badge>{stats.recent.length}</Badge>
-            </h2>
-            <span className="section-subtitle">
-              所选时间段内最新 100 条记录 · 滚动查看更多
-            </span>
-          </div>
-          <span className="subtle">
-            {state.accounts.filter((account) => account.enabled).length}{" "}
-            个已启用账号
-          </span>
-        </div>
-        {stats.recent.length ? (
-          <div
-            className="table-scroll recent-requests-scroll"
-            role="region"
-            aria-label="最近请求，可滚动查看更多"
-            tabIndex={0}
-          >
-            <table>
-              <thead>
-                <tr>
-                  <th>请求时间</th>
-                  <th>模型</th>
-                  <th>账号 / 密钥</th>
-                  <th>状态</th>
-                  <th className="numeric">Token</th>
-                  <th className="numeric">耗时</th>
-                  <th className="numeric">Cyber</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stats.recent.map((row) => (
-                  <tr key={row.id}>
-                    <td className="mono muted">{time(row.created_at)}</td>
-                    <td>
-                      <span className="model-name">{row.model || "—"}</span>
-                    </td>
-                    <td>
-                      <span>{row.account_name || "—"}</span>
-                      <span className="cell-secondary">
-                        {row.key_name || "—"}
-                      </span>
-                    </td>
-                    <td>
-                      <Badge
-                        variant={
-                          row.status >= 200 && row.status < 300
-                            ? "green"
-                            : "red"
-                        }
-                        dot
-                      >
-                        {row.status}
-                      </Badge>
-                    </td>
-                    <td
-                      className="numeric mono"
-                      title={number(
-                        (row.input_tokens || 0) + (row.output_tokens || 0),
-                      )}
-                    >
-                      {tokenCount(
-                        (row.input_tokens || 0) + (row.output_tokens || 0),
-                      )}
-                    </td>
-                    <td className="numeric mono">
-                      {number(row.latency_ms)}
-                      <span className="unit">ms</span>
-                    </td>
-                    <td className="numeric mono">{row.cyber_count || 0}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <Empty
-            title={loading ? "正在加载请求记录" : "暂无请求记录"}
-            detail="所选时间段内没有请求数据"
-          />
-        )}
-      </section>
     </>
   );
 }

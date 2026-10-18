@@ -83,6 +83,39 @@ export type Usage = {
   input_tokens: number;
   output_tokens: number;
   cached_tokens: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
+};
+export type RequestLog = {
+  id: string;
+  timestamp: number;
+  key_id: string;
+  account_id: string;
+  key_name: string | null;
+  account_name: string | null;
+  model: string;
+  protocol: string;
+  request_path?: string;
+  status: number;
+  latency_ms: number;
+  first_token_ms?: number | null;
+  usage: Usage;
+  cyber: boolean | number;
+  attempts: number;
+  error: string | null;
+};
+export type RequestLogPage = {
+  items: RequestLog[];
+  page: number;
+  page_size: 20;
+  total: number;
+  total_pages: number;
+  retention_days: number;
+};
+export type RequestLogExport = {
+  exported_at: number | string;
+  retention_days: number;
+  logs: RequestLog[];
 };
 export type RelayKey = {
   id: string;
