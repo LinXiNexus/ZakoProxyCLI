@@ -1,0 +1,3 @@
+f26bdff5c6eccf66d45f5f1fbde4d5ef98bf889ca7646f73bd7f13d8fd84ee33  ZakoAI-0.7.7-mobile-universal.apk
+2bac6758027631ffa244683396eaa99653d86c35483be89cc3bf578e915c48df  zakoai-proxy-0.7.7-aarch64-linux-android
+95ff410c828294646abd1169413b6b642a140352134631e05e6d221b0e90eea3  zakoai-proxy-0.7.7-x86_64-linux-android
