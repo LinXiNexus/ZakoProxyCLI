@@ -159,7 +159,7 @@ fn run(
     input: ChatInput,
 ) -> impl Stream<Item = Result<Event, Infallible>> + Send + 'static {
     async_stream::stream! {
-        let (client, url, secret, model) = if cfg.endpoint.trim().is_empty() {
+        let (client, url, secret, model, account_id) = if cfg.endpoint.trim().is_empty() {
             match resolve_account(&s, &cfg.model) {
                 Ok(value) => value,
                 Err(error) => {
@@ -174,10 +174,17 @@ fn run(
                 endpoint_url(&cfg.endpoint),
                 cfg.api_key.clone(),
                 cfg.model.clone(),
+                String::new(),
             )
         };
+        // Apply the group armor ("破甲") strategy the same way the proxy does:
+        // selected profiles first, then the default strategy when enabled.
+        let armor = group_instruction(&s, &account_id, &model);
         let root_allowed = input.allow_root.unwrap_or(true);
-        let mut messages: Vec<Value> = Vec::with_capacity(input.messages.len() + 1);
+        let mut messages: Vec<Value> = Vec::with_capacity(input.messages.len() + 2);
+        if let Some(instruction) = armor.as_deref() {
+            messages.push(json!({"role": "system", "content": instruction}));
+        }
         messages.push(json!({"role": "system", "content": cfg.system_prompt}));
         for m in input.messages {
             if m.get("role").and_then(Value::as_str).is_some() {
@@ -606,10 +613,31 @@ fn truncate(mut text: String, max: usize) -> String {
     text
 }
 
+/// Resolve the group armor ("破甲") instruction for a model based on the
+/// account's groups, mirroring the proxy's per-request rule (selected profile
+/// first, then the opt-in default strategy).
+fn group_instruction(s: &Shared, account_id: &str, model: &str) -> Option<String> {
+    if account_id.is_empty() {
+        return None;
+    }
+    let cfg = s.store.config().ok()?;
+    let account = cfg.accounts.iter().find(|a| a.id == account_id)?;
+    for group_id in &account.group_ids {
+        let Some(group) = cfg.groups.iter().find(|g| &g.id == group_id) else {
+            continue;
+        };
+        if let Some(instruction) = crate::profiles::instruction(group, model) {
+            return Some(instruction.to_owned());
+        }
+    }
+    None
+}
+
 fn resolve_account(
     s: &Shared,
     model: &str,
-) -> Result<(reqwest::Client, String, String, String), String> {
+) -> Result<(reqwest::Client, String, String, String, String), String> {
+    // Returns (client, url, secret, actual_model, account_id).
     let cfg = s.store.config()?;
     let mut accounts: Vec<_> = cfg
         .accounts
@@ -632,7 +660,7 @@ fn resolve_account(
     let url = crate::proxy::upstream_url(&account.endpoint, "chat/completions")?.to_string();
     let client = crate::network::account_client(s, account)?;
     let secret = s.store.unseal(&account.api_key)?;
-    Ok((client, url, secret, actual))
+    Ok((client, url, secret, actual, account.id.clone()))
 }
 
 pub async fn models(State(s): State<Shared>, h: HeaderMap) -> ApiResult<Value> {
@@ -823,4 +851,50 @@ fn tools_json() -> Value {
             }
         }
     ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::store::{Account, Group};
+
+    #[test]
+    fn agent_applies_group_armor_instruction() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = crate::new_app(dir.path(), dir.path().into()).unwrap();
+        let profiles = crate::profiles::all();
+        let profile = &profiles[0];
+        let profile_id = profile.id.clone();
+        let profile_instruction = profile.instruction.clone();
+        let model = profile.models[0].clone();
+        state
+            .store
+            .update(|c| {
+                c.groups = vec![Group {
+                    id: "g-armor".into(),
+                    name: "armor".into(),
+                    profile_ids: vec![profile_id],
+                    default_strategy_enabled: false,
+                }];
+                c.accounts = vec![Account {
+                    id: "acc-1".into(),
+                    name: "test".into(),
+                    enabled: true,
+                    models: vec![model.clone()],
+                    group_ids: vec!["g-armor".into()],
+                    ..Account::default()
+                }];
+                Ok(())
+            })
+            .unwrap();
+        let instruction = group_instruction(&state, "acc-1", &model);
+        assert_eq!(instruction.as_deref(), Some(profile_instruction.as_str()));
+    }
+
+    #[test]
+    fn agent_ignores_custom_endpoints_without_account() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = crate::new_app(dir.path(), dir.path().into()).unwrap();
+        assert!(group_instruction(&state, "", "any").is_none());
+    }
 }
