@@ -5302,3 +5302,211 @@ body {
 @media (max-width: 640px) {
   .prefs-grid { grid-template-columns: 1fr; }
 }
+
+/* =========================================================
+   Light sidebar + Glass UI (cleaned)
+   Merged from three overlapping drafts into one consistent
+   theme with no !important overrides. Final visual result
+   is identical to v1.2.4.
+   ========================================================= */
+
+/* --- global frosted background --- */
+body,
+.auth-shell {
+  background:
+    radial-gradient(1200px 800px at 8% -10%, #e5f6ec 0%, transparent 60%),
+    radial-gradient(1100px 750px at 100% 0%, #e2eff8 0%, transparent 55%),
+    radial-gradient(1000px 750px at 50% 120%, #f7eeda 0%, transparent 60%),
+    #f7f9f8;
+  background-attachment: fixed;
+}
+
+/* --- translucent panels --- */
+.sidebar,
+.topbar,
+.metric,
+.data-section,
+.recent-section,
+.settings-section,
+.chart-section,
+.token-section,
+.modal,
+.rk-settings,
+.rk-history,
+.rk-picker,
+.rk-thinking,
+.rk-tool,
+.toast {
+  background: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  backdrop-filter: blur(18px) saturate(1.2);
+  border-color: rgba(255, 255, 255, 0.6);
+  box-shadow: 0 8px 32px rgba(27, 56, 32, 0.08);
+}
+.topbar {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.7);
+}
+.rk-user,
+.rk-style-bubble .rk-assistant-text {
+  background: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  backdrop-filter: blur(14px) saturate(1.2);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+.rk-tools-row .rk-chip,
+.rk-root-chip {
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  backdrop-filter: blur(12px) saturate(1.2);
+}
+.modal-header,
+.modal-footer {
+  background: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+.search,
+.list-toolbar {
+  background: rgba(255, 255, 255, 0.6);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+/* --- inputs & controls --- */
+input,
+textarea,
+select,
+.search,
+.date-range,
+.password-input,
+.prefixed-input,
+.suffixed-input {
+  background: rgba(255, 255, 255, 0.6);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+.button:not(.primary):not(.danger),
+.rk-chip,
+.rk-icon,
+.nav-item,
+.segmented,
+.list-toolbar .select-wrap select {
+  background: rgba(255, 255, 255, 0.5);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+.button.primary,
+.rk-primary,
+.rk-send:not(:disabled),
+.button.auth-submit {
+  background: rgba(24, 123, 96, 0.85);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+}
+
+/* --- tables & composer --- */
+table {
+  background: transparent;
+}
+td {
+  background: transparent;
+}
+th,
+.recent-requests-scroll th {
+  background: rgba(248, 250, 248, 0.6);
+}
+.table-footer {
+  background: rgba(252, 253, 251, 0.6);
+}
+.rk-composer::before {
+  background: linear-gradient(180deg, rgba(247, 249, 248, 0), rgba(247, 249, 248, 0.45) 55%);
+}
+
+/* --- sidebar: light theme, rounded full-height --- */
+.sidebar {
+  inset: 0 auto 0 0;
+  border-radius: 0 26px 26px 0;
+  border-right: 1px solid rgba(255, 255, 255, 0.6);
+  color: #4b5a53;
+}
+.sidebar .brand-dark .brand-mark {
+  background: var(--green);
+  color: #fff;
+}
+.sidebar .brand-dark .brand-word {
+  color: #233b2e;
+}
+.sidebar .brand-dark .brand-word > span {
+  color: #7e8e83;
+}
+.sidebar .workspace-label {
+  color: #27362f;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.sidebar .workspace-label > svg {
+  color: #a2b0a6;
+}
+.sidebar .workspace-label small {
+  color: #8b968f;
+}
+.sidebar .workspace-avatar {
+  background: #eaf0e9;
+  border-color: var(--line);
+  color: #6f836b;
+}
+.sidebar .nav-label {
+  color: #98a39b;
+}
+.sidebar .nav-item {
+  color: #5b6a62;
+}
+.sidebar .nav-item.active {
+  background: rgba(233, 242, 237, 0.75);
+  color: var(--green);
+}
+.sidebar .nav-item.active > svg {
+  color: var(--green);
+}
+.sidebar .nav-indicator {
+  background: var(--green);
+}
+.sidebar .relay-status {
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+.sidebar .relay-status > svg {
+  color: var(--green);
+}
+.sidebar .sidebar-version,
+.sidebar .sidebar-version a,
+.sidebar .mobile-nav-close {
+  color: var(--muted);
+}
+@media (hover: hover) and (pointer: fine) {
+  .sidebar .nav-item:hover:not(.active) {
+    background: #eef3f0;
+    color: #4b5a53;
+  }
+}
+
+/* --- nav buttons fill the sidebar (logo / status excluded) --- */
+.sidebar nav {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  gap: 6px;
+}
+.sidebar .nav-item {
+  flex: 1 1 0%;
+  height: auto;
+  min-height: 34px;
+  margin-bottom: 0;
+  border-radius: 14px;
+}
+.sidebar .sidebar-bottom {
+  margin-top: 0;
+  padding-top: 16px;
+}
