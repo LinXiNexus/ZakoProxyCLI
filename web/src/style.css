@@ -5992,7 +5992,10 @@ table {
   border: 1px solid var(--line);
 }
 
-/* keep container-scoped inputs translucent like the glass theme */
+/* inner input surfaces stay clear — the glass container supplies the tint */
+input,
+textarea,
+select,
 .search input,
 .search select,
 .date-range input,
@@ -6007,7 +6010,7 @@ table {
 .field textarea,
 .rk-input textarea,
 .rk-input input {
-  background: rgba(255, 255, 255, 0.6);
+  background: transparent;
 }
 
 /* ===== User preference hooks: UI font & background theme ===== */
@@ -6047,4 +6050,19 @@ body[data-bg="ocean"] .auth-shell {
     radial-gradient(900px 660px at 50% 120%, #d8f0e4 0%, transparent 60%),
     #eef4fb;
   background-attachment: fixed;
+}
+
+/* ===== Softer translucent chat bubbles ===== */
+.rk-user,
+.rk-style-bubble .rk-assistant-text {
+  background: rgba(255, 255, 255, 0.42);
+  -webkit-backdrop-filter: blur(16px) saturate(1.25);
+  backdrop-filter: blur(16px) saturate(1.25);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  box-shadow: 0 6px 22px rgba(27, 56, 32, 0.06);
+}
+/* selectors + send icon keep soft glass as controls */
+.rk-send:not(:disabled) {
+  background: rgba(255, 255, 255, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.7);
 }
