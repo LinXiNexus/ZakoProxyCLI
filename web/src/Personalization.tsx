@@ -96,6 +96,32 @@ export function PersonalizationPage({
               <option value="large">大</option>
             </select>
           </Field>
+          <Field label="界面字体">
+            <select
+              value={prefs.fontFamily}
+              onChange={(event) =>
+                update({ fontFamily: event.target.value as Prefs["fontFamily"] })
+              }
+            >
+              <option value="default">默认（Inter）</option>
+              <option value="system">系统字体</option>
+              <option value="serif">衬线</option>
+              <option value="mono">等宽</option>
+            </select>
+          </Field>
+          <Field label="界面背景">
+            <select
+              value={prefs.uiBackground}
+              onChange={(event) =>
+                update({ uiBackground: event.target.value as Prefs["uiBackground"] })
+              }
+            >
+              <option value="aurora">极光（默认）</option>
+              <option value="plain">纯净浅色</option>
+              <option value="sunset">晚霞</option>
+              <option value="ocean">海洋</option>
+            </select>
+          </Field>
           <Field label="消息样式">
             <select
               value={prefs.messageStyle}

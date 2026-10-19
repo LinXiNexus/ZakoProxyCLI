@@ -1,6 +1,8 @@
 export type Prefs = {
   fontSize: "small" | "normal" | "large";
   messageStyle: "plain" | "bubble";
+  fontFamily: "default" | "system" | "serif" | "mono";
+  uiBackground: "aurora" | "plain" | "sunset" | "ocean";
   thinkingOpen: boolean;
   showTools: boolean;
   showTime: boolean;
@@ -14,6 +16,8 @@ export type Prefs = {
 export const defaultPrefs: Prefs = {
   fontSize: "normal",
   messageStyle: "plain",
+  fontFamily: "default",
+  uiBackground: "aurora",
   thinkingOpen: false,
   showTools: true,
   showTime: false,

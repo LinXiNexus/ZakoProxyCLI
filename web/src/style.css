@@ -6009,3 +6009,42 @@ table {
 .rk-input input {
   background: rgba(255, 255, 255, 0.6);
 }
+
+/* ===== User preference hooks: UI font & background theme ===== */
+body[data-font="system"] {
+  font-family: system-ui, -apple-system, "PingFang SC", "HarmonyOS Sans SC", "Microsoft YaHei", sans-serif;
+}
+body[data-font="serif"] {
+  font-family: Georgia, "Times New Roman", "Source Han Serif SC", "Noto Serif CJK SC", serif;
+}
+body[data-font="mono"] {
+  font-family: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, Consolas, "Noto Sans Mono CJK SC", monospace;
+}
+body[data-font="system"] :is(button, input, textarea, select),
+body[data-font="serif"] :is(button, input, textarea, select),
+body[data-font="mono"] :is(button, input, textarea, select) {
+  font-family: inherit;
+}
+
+body[data-bg="plain"],
+body[data-bg="plain"] .auth-shell {
+  background: #f3f7f4;
+}
+body[data-bg="sunset"],
+body[data-bg="sunset"] .auth-shell {
+  background:
+    radial-gradient(1100px 720px at 90% -10%, #ffdfae 0%, transparent 60%),
+    radial-gradient(1000px 700px at -10% 10%, #ffd7dd 0%, transparent 55%),
+    radial-gradient(900px 640px at 50% 115%, #ffe9e2 0%, transparent 60%),
+    #fff5ee;
+  background-attachment: fixed;
+}
+body[data-bg="ocean"],
+body[data-bg="ocean"] .auth-shell {
+  background:
+    radial-gradient(1100px 760px at 10% -10%, #d6e7ff 0%, transparent 60%),
+    radial-gradient(1000px 720px at 100% 0%, #cfe5f6 0%, transparent 55%),
+    radial-gradient(900px 660px at 50% 120%, #d8f0e4 0%, transparent 60%),
+    #eef4fb;
+  background-attachment: fixed;
+}
