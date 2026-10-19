@@ -5991,3 +5991,21 @@ table {
 .settings-section {
   border: 1px solid var(--line);
 }
+
+/* keep container-scoped inputs translucent like the glass theme */
+.search input,
+.search select,
+.date-range input,
+.password-input input,
+.prefixed-input input,
+.suffixed-input input,
+.inline-input input,
+.profile-fieldset .search input,
+.auth-form input,
+.proxy-input input,
+.field input,
+.field textarea,
+.rk-input textarea,
+.rk-input input {
+  background: rgba(255, 255, 255, 0.6);
+}
