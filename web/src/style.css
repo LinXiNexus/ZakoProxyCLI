@@ -6066,3 +6066,94 @@ body[data-bg="ocean"] .auth-shell {
   background: rgba(255, 255, 255, 0.35);
   border: 1px solid rgba(255, 255, 255, 0.7);
 }
+
+/* ===== custom background image (via --bg-image) ===== */
+body[data-bg="image"],
+body[data-bg="image"] .auth-shell {
+  background-color: #f3f7f4;
+  background-image:
+    linear-gradient(rgba(247, 249, 248, 0.42), rgba(247, 249, 248, 0.42)),
+    var(--bg-image);
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+  background-size: cover, cover;
+  background-attachment: fixed, fixed;
+}
+body[data-mode="dark"][data-bg="image"],
+body[data-mode="dark"][data-bg="image"] .auth-shell {
+  background-color: #0f1a14;
+  background-image:
+    linear-gradient(rgba(10, 18, 14, 0.5), rgba(10, 18, 14, 0.5)),
+    var(--bg-image);
+}
+
+/* ===== dark mode theme ===== */
+body[data-mode="dark"] {
+  color-scheme: dark;
+  --line: rgba(255, 255, 255, 0.09);
+  --muted: #93a89c;
+}
+body[data-mode="dark"],
+body[data-mode="dark"] .workspace,
+body[data-mode="dark"] .auth-shell {
+  background:
+    radial-gradient(1200px 800px at 8% -10%, #143224 0%, transparent 60%),
+    radial-gradient(1100px 750px at 100% 0%, #0d2438 0%, transparent 55%),
+    radial-gradient(1000px 750px at 50% 120%, #201f10 0%, transparent 60%),
+    #0f1a14;
+  background-attachment: fixed;
+  color: #d9e5de;
+}
+body[data-mode="dark"] :is(
+  .sidebar, .topbar, .metric, .data-section, .recent-section, .settings-section,
+  .chart-section, .token-section, .modal, .rk-settings, .rk-history, .rk-picker,
+  .rk-thinking, .rk-tool, .toast, .rk-user, .rk-style-bubble .rk-assistant-text,
+  .rk-composer, .rk-input, .search, .list-toolbar, .modal-header, .modal-footer,
+  .table-footer
+) {
+  background: rgba(22, 34, 28, 0.6);
+  border-color: rgba(255, 255, 255, 0.09);
+}
+body[data-mode="dark"] :is(
+  .search, .date-range, .password-input, .prefixed-input, .suffixed-input,
+  .button:not(.primary):not(.danger), .rk-chip, .rk-icon, .nav-item,
+  .segmented button, .rk-send:not(:disabled), .icon-button
+) {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.09);
+}
+body[data-mode="dark"] :is(
+  .brand-dark .brand-word, .brand-dark .brand-word > span,
+  .sidebar .workspace-label, .sidebar .workspace-label small,
+  .sidebar .workspace-label > svg, .sidebar .nav-label, .sidebar .nav-item,
+  .sidebar .relay-status, .sidebar .sidebar-version,
+  .sidebar .sidebar-version a, .breadcrumb, .breadcrumb-chevron,
+  .breadcrumb-workspace, .live-state, .topbar-actions, .metric-label,
+  .section-heading h2, .settings-section-heading h2,
+  .settings-section-heading p, .prefs-row strong, .prefs-row small,
+  th, td, input, textarea, select
+) {
+  color: #c9d8d0;
+}
+body[data-mode="dark"] .sidebar .nav-item.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: #7ed0aa;
+}
+body[data-mode="dark"] .sidebar .nav-item.active > svg {
+  color: #7ed0aa;
+}
+body[data-mode="dark"] .rk-user,
+body[data-mode="dark"] .rk-style-bubble .rk-assistant-text {
+  background: rgba(30, 46, 38, 0.55);
+}
+body[data-mode="dark"] input::placeholder {
+  color: #6f8578;
+}
+@media (hover: hover) and (pointer: fine) {
+  body[data-mode="dark"] .button:hover:not(.primary):not(.danger) {
+    background: rgba(255, 255, 255, 0.11);
+  }
+  body[data-mode="dark"] .nav-item:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.08);
+  }
+}

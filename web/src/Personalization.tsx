@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Copy, Info, Trash2 } from "lucide-react";
 import { api, copy, errorMessage } from "./api";
 import { Button, Field, Toggle } from "./components";
@@ -28,6 +28,32 @@ function ToggleRow({
   );
 }
 
+async function compressImage(file: File, maxSize = 1600): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new window.Image();
+      image.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("无法处理图片"));
+          return;
+        }
+        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.75));
+      };
+      image.onerror = () => reject(new Error("无法读取图片"));
+      image.src = String(reader.result ?? "");
+    };
+    reader.onerror = () => reject(new Error("读取图片失败"));
+    reader.readAsDataURL(file);
+  });
+}
+
 export function PersonalizationPage({
   notify,
 }: {
@@ -35,6 +61,24 @@ export function PersonalizationPage({
 }) {
   const [prefs, setPrefs] = useState<Prefs>(() => loadPrefs());
   const [busy, setBusy] = useState("");
+  const bgFileInput = useRef<HTMLInputElement>(null);
+
+  async function pickBackground(file: File | undefined) {
+    if (!file) return;
+    setBusy("bg");
+    try {
+      if (!file.type.startsWith("image/")) {
+        throw new Error("请选择图片文件");
+      }
+      const data = await compressImage(file);
+      update({ bgImage: data, uiBackground: "image" });
+      notify("背景图片已应用");
+    } catch (failure) {
+      notify(errorMessage(failure), true);
+    } finally {
+      setBusy("");
+    }
+  }
 
   function update(patch: Partial<Prefs>) {
     const next = { ...prefs, ...patch };
@@ -120,7 +164,49 @@ export function PersonalizationPage({
               <option value="plain">纯净浅色</option>
               <option value="sunset">晚霞</option>
               <option value="ocean">海洋</option>
+              <option value="image">自定义图片</option>
             </select>
+          </Field>
+          <Field label="界面主题">
+            <select
+              value={prefs.uiTheme}
+              onChange={(event) =>
+                update({ uiTheme: event.target.value as Prefs["uiTheme"] })
+              }
+            >
+              <option value="light">浅色</option>
+              <option value="dark">深色</option>
+              <option value="auto">跟随系统</option>
+            </select>
+          </Field>
+          <Field label="背景图片">
+            <div className="prefs-file-actions">
+              <Button
+                busy={busy === "bg"}
+                type="button"
+                onClick={() => bgFileInput.current?.click()}
+              >
+                {prefs.bgImage ? "更换图片" : "上传图片"}
+              </Button>
+              {prefs.bgImage ? (
+                <Button
+                  type="button"
+                  onClick={() => update({ bgImage: "", uiBackground: "aurora" })}
+                >
+                  清除
+                </Button>
+              ) : null}
+              <input
+                ref={bgFileInput}
+                type="file"
+                accept="image/*"
+                style={{ display: "none" }}
+                onChange={(event) => {
+                  void pickBackground(event.target.files?.[0]);
+                  event.target.value = "";
+                }}
+              />
+            </div>
           </Field>
           <Field label="消息样式">
             <select

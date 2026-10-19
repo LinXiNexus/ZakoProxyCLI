@@ -2,7 +2,9 @@ export type Prefs = {
   fontSize: "small" | "normal" | "large";
   messageStyle: "plain" | "bubble";
   fontFamily: "default" | "system" | "serif" | "mono";
-  uiBackground: "aurora" | "plain" | "sunset" | "ocean";
+  uiBackground: "aurora" | "plain" | "sunset" | "ocean" | "image";
+  bgImage: string;
+  uiTheme: "light" | "dark" | "auto";
   thinkingOpen: boolean;
   showTools: boolean;
   showTime: boolean;
@@ -18,6 +20,8 @@ export const defaultPrefs: Prefs = {
   messageStyle: "plain",
   fontFamily: "default",
   uiBackground: "aurora",
+  bgImage: "",
+  uiTheme: "auto",
   thinkingOpen: false,
   showTools: true,
   showTime: false,
