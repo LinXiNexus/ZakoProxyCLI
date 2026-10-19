@@ -6157,3 +6157,29 @@ body[data-mode="dark"] input::placeholder {
     background: rgba(255, 255, 255, 0.08);
   }
 }
+
+/* ===== chat composer: single glass layer =====
+   .rk-composer supplies the glass; .rk-input stays fully clear so
+   the backdrop shows through exactly once. */
+.rk-input,
+body[data-mode="dark"] .rk-input {
+  background: transparent;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border: 0;
+  box-shadow: none;
+}
+.rk-composer::before {
+  background: linear-gradient(
+    180deg,
+    rgba(247, 249, 248, 0),
+    rgba(247, 249, 248, 0.14) 55%
+  );
+}
+body[data-mode="dark"] .rk-composer::before {
+  background: linear-gradient(
+    180deg,
+    rgba(15, 26, 20, 0),
+    rgba(15, 26, 20, 0.2) 55%
+  );
+}
