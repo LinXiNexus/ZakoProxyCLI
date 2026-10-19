@@ -5983,3 +5983,11 @@ table {
     padding: 9px 12px;
   }
 }
+
+/* stacked rounded panels need real gaps between them */
+.settings-section + .settings-section {
+  margin-top: 22px;
+}
+.settings-section {
+  border: 1px solid var(--line);
+}
