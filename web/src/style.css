@@ -5796,3 +5796,120 @@ th,
   .log-page-heading .button { min-height: 44px; }
   .log-page-select select { font-size: 16px; }
 }
+
+/* =========================================================
+   All-rounded theme: every box gets a soft radius
+   Extra variables + cascade tail keep earlier rules intact.
+   ========================================================= */
+:root {
+  --radius-panel: 22px;
+  --radius-card: 18px;
+  --radius-control: 14px;
+  --radius-chip: 999px;
+}
+
+/* large panels */
+.metric,
+.data-section,
+.recent-section,
+.chart-section,
+.token-section,
+.settings-section,
+.modal,
+.rk-settings,
+.rk-history,
+.rk-picker,
+.rk-thinking,
+.rk-tool,
+.rk-user,
+.rk-input,
+.rk-composer,
+.rk-style-bubble .rk-assistant-text,
+.toast {
+  border-radius: var(--radius-panel);
+}
+
+/* medium surfaces */
+.search,
+.list-toolbar,
+.modal-header,
+.modal-footer,
+.rk-chip,
+.rk-root-chip,
+.rk-tools-row .rk-chip,
+.rk-composer::before {
+  border-radius: var(--radius-card);
+}
+
+/* controls */
+.button,
+.button.auth-submit,
+.icon-button,
+.mobile-nav-close,
+.menu-button,
+.rk-icon,
+.rk-primary,
+.rk-send,
+input,
+textarea,
+select,
+.search input,
+.date-range input,
+.password-input input,
+.prefixed-input input,
+.suffixed-input input,
+.inline-input input,
+.segmented button,
+.check-option,
+.protocol-option {
+  border-radius: var(--radius-control);
+}
+
+/* pills & badges */
+.rk-chip,
+.rk-root-chip,
+.update-available-badge {
+  border-radius: var(--radius-chip);
+}
+
+/* tables */
+table {
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+.table-footer {
+  border-radius: 0 0 var(--radius-card) var(--radius-card);
+}
+
+/* markdown blocks */
+.rk-main pre,
+.rk-main code,
+.rk-message-body pre {
+  border-radius: 12px;
+}
+
+/* promo banner: floating pill under the top edge */
+.promo-banner {
+  border-radius: 0 0 18px 18px;
+  margin: 0 14px 14px;
+}
+.promo-banner > a {
+  border-radius: inherit;
+}
+
+/* top bar bottom edge stays soft where it meets content */
+.topbar {
+  border-bottom-left-radius: var(--radius-card);
+}
+
+/* mobile: tighten radii so content keeps breathing room */
+@media (max-width: 640px) {
+  :root {
+    --radius-panel: 18px;
+    --radius-card: 14px;
+    --radius-control: 12px;
+  }
+  table {
+    border-radius: var(--radius-card);
+  }
+}
