@@ -25,6 +25,7 @@ type AgentConfig = {
   endpoint: string;
   api_key: string;
   model: string;
+  group_id: string;
   system_prompt: string;
   allow_root: boolean;
   max_steps: number;
@@ -61,6 +62,7 @@ const emptyConfig: AgentConfig = {
   endpoint: "",
   api_key: "",
   model: "",
+  group_id: "",
   system_prompt: "",
   allow_root: false,
   max_steps: 6,
@@ -86,6 +88,7 @@ export function AgentSettingsPage({
 }) {
   const [config, setConfig] = useState<AgentConfig>(emptyConfig);
   const [models, setModels] = useState<ModelGroup[]>([]);
+  const [groups, setGroups] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -93,11 +96,13 @@ export function AgentSettingsPage({
   useEffect(() => {
     void (async () => {
       try {
-        const [cfg, list] = await Promise.all([
+        const [cfg, list, glist] = await Promise.all([
           loadConfig(),
           api<ModelGroup[]>("/agent/models"),
+          api<{ id: string; name: string }[]>("/api/groups"),
         ]);
         setModels(list);
+        setGroups(Array.isArray(glist) ? glist : []);
         setConfig({
           ...cfg,
           model: cfg.model || list[0]?.models[0] || "",
@@ -180,6 +185,21 @@ export function AgentSettingsPage({
                       </option>
                     ))}
                   </optgroup>
+                ))}
+              </select>
+            </Field>
+            <Field label="破甲分组" hint="聊天时选取该分组的破甲策略；留空跟随账号所属分组">
+              <select
+                value={config.group_id || ""}
+                onChange={(event) =>
+                  setConfig({ ...config, group_id: event.target.value })
+                }
+              >
+                <option value="">跟随账号分组</option>
+                {groups.map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
                 ))}
               </select>
             </Field>

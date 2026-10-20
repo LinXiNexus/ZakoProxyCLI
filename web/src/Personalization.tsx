@@ -182,9 +182,9 @@ export function PersonalizationPage({
           <Field label="背景图片">
             <div className="prefs-file-actions">
               <Button
-                busy={busy === "bg"}
                 type="button"
                 onClick={() => bgFileInput.current?.click()}
+                disabled={busy === "bg"}
               >
                 {prefs.bgImage ? "更换图片" : "上传图片"}
               </Button>
@@ -196,16 +196,19 @@ export function PersonalizationPage({
                   清除
                 </Button>
               ) : null}
-              <input
-                ref={bgFileInput}
-                type="file"
-                accept="image/*"
-                style={{ display: "none" }}
-                onChange={(event) => {
-                  void pickBackground(event.target.files?.[0]);
-                  event.target.value = "";
-                }}
-              />
+              <label className="prefs-file-trigger">
+                {prefs.bgImage ? "更换图片" : "上传图片"}
+                <input
+                  ref={bgFileInput}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(event) => {
+                    void pickBackground(event.target.files?.[0]);
+                    event.target.value = "";
+                  }}
+                />
+              </label>
             </div>
           </Field>
           <Field label="消息样式">

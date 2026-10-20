@@ -21,6 +21,8 @@ pub struct AgentConfig {
     pub api_key: String,
     #[serde(default)]
     pub model: String,
+    #[serde(default)]
+    pub group_id: String,
     #[serde(default = "default_prompt")]
     pub system_prompt: String,
     #[serde(default)]
@@ -51,6 +53,7 @@ impl Default for AgentConfig {
             endpoint: String::new(),
             api_key: String::new(),
             model: String::new(),
+            group_id: String::new(),
             system_prompt: default_prompt(),
             allow_root: false,
             max_steps: default_steps(),
@@ -179,7 +182,7 @@ fn run(
         };
         // Apply the group armor ("破甲") strategy the same way the proxy does:
         // selected profiles first, then the default strategy when enabled.
-        let armor = group_instruction(&s, &account_id, &model);
+        let armor = group_instruction(&s, &cfg.group_id, &account_id, &model);
         let root_allowed = input.allow_root.unwrap_or(true);
         let mut messages: Vec<Value> = Vec::with_capacity(input.messages.len() + 2);
         if let Some(instruction) = armor.as_deref() {
@@ -613,21 +616,43 @@ fn truncate(mut text: String, max: usize) -> String {
     text
 }
 
-/// Resolve the group armor ("破甲") instruction for a model based on the
-/// account's groups, mirroring the proxy's per-request rule (selected profile
-/// first, then the opt-in default strategy).
-fn group_instruction(s: &Shared, account_id: &str, model: &str) -> Option<String> {
-    if account_id.is_empty() {
-        return None;
-    }
+/// Resolve the group armor ("破甲") instruction for a model.
+/// Priority: an explicitly chosen group (Agent setting) wins; otherwise the
+/// account's groups. Exact model match first, with a local-chat-only family
+/// fallback so custom chat models still receive the right strategy.
+fn group_instruction(
+    s: &Shared,
+    chosen_group: &str,
+    account_id: &str,
+    model: &str,
+) -> Option<String> {
     let cfg = s.store.config().ok()?;
-    let account = cfg.accounts.iter().find(|a| a.id == account_id)?;
-    for group_id in &account.group_ids {
-        let Some(group) = cfg.groups.iter().find(|g| &g.id == group_id) else {
-            continue;
-        };
-        if let Some(instruction) = crate::profiles::instruction(group, model) {
-            return Some(instruction.to_owned());
+    let evaluate = |group: &crate::store::Group| {
+        crate::profiles::instruction(group, model)
+            .map(str::to_owned)
+            .or_else(|| {
+                crate::profiles::model_family(model).and_then(|family| {
+                    crate::profiles::all().iter().find_map(|p| {
+                        (p.model_family == family && group.profile_ids.contains(&p.id))
+                            .then(|| p.instruction.clone())
+                    })
+                })
+            })
+    };
+    if !chosen_group.is_empty() {
+        if let Some(group) = cfg.groups.iter().find(|g| g.id == chosen_group) {
+            return evaluate(group);
+        }
+    }
+    if !account_id.is_empty() {
+        if let Some(account) = cfg.accounts.iter().find(|a| a.id == account_id) {
+            for group_id in &account.group_ids {
+                if let Some(group) = cfg.groups.iter().find(|g| &g.id == group_id) {
+                    if let Some(value) = evaluate(group) {
+                        return Some(value);
+                    }
+                }
+            }
         }
     }
     None
@@ -887,7 +912,7 @@ mod tests {
                 Ok(())
             })
             .unwrap();
-        let instruction = group_instruction(&state, "acc-1", &model);
+        let instruction = group_instruction(&state, "", "acc-1", &model);
         assert_eq!(instruction.as_deref(), Some(profile_instruction.as_str()));
     }
 
@@ -895,6 +920,6 @@ mod tests {
     fn agent_ignores_custom_endpoints_without_account() {
         let dir = tempfile::tempdir().unwrap();
         let state = crate::new_app(dir.path(), dir.path().into()).unwrap();
-        assert!(group_instruction(&state, "", "any").is_none());
+        assert!(group_instruction(&state, "", "", "any").is_none());
     }
 }
