@@ -15,9 +15,23 @@ import com.lxsh.relay.R;
 
 /** Native shell with a glass sidebar + content area (M1 skeleton pages). */
 public final class MainActivity extends Activity {
+    private FrameLayout root;
     private FrameLayout content;
     private LinearLayout drawer;
     private View scrim;
+    private android.widget.LinearLayout topbar;
+
+    private void refreshTopbarGlass() {
+        try {
+            android.graphics.Bitmap full = GlassUtil.capture(root);
+            int th = dp(56);
+            android.graphics.Bitmap region = GlassUtil.crop(full, 0, 0, full.getWidth(), th);
+            android.graphics.Bitmap blurred = GlassUtil.blur(this, region, 14f);
+            GlassUtil.applyGlass(topbar, this, blurred, 0.72f);
+        } catch (Throwable t) {
+            topbar.setBackgroundColor(0xEFFFFFFF);
+        }
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -27,7 +41,7 @@ public final class MainActivity extends Activity {
     }
 
     private View buildUi() {
-        FrameLayout root = new FrameLayout(this);
+        root = new FrameLayout(this);
         root.setBackgroundColor(colorRes(R.color.bg_light));
 
         content = new FrameLayout(this);
@@ -64,6 +78,8 @@ public final class MainActivity extends Activity {
         topbar.addView(title, new android.widget.LinearLayout.LayoutParams(-2, -2));
         FrameLayout.LayoutParams topLp = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
         root.addView(topbar, topLp);
+        this.topbar = topbar;
+        refreshTopbarGlass();
         return root;
     }
 
@@ -119,7 +135,25 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void openDrawer() { translate(0); scrim.setAlpha(0.5f); scrim.setVisibility(View.VISIBLE); }
+    private void openDrawer() {
+        refreshSidebarGlass();
+        translate(0);
+        scrim.setAlpha(0.5f);
+        scrim.setVisibility(View.VISIBLE);
+    }
+
+    private void refreshSidebarGlass() {
+        try {
+            android.graphics.Bitmap full = GlassUtil.capture(root);
+            int dw = dp(256);
+            android.graphics.Bitmap region = GlassUtil.crop(full, 0, 0, dw, full.getHeight());
+            android.graphics.Bitmap blurred = GlassUtil.blur(this, region, 20f);
+            GlassUtil.applyGlass(drawer, this, blurred, 0.55f);
+        } catch (Throwable t) {
+            // fallback: solid semitransparent panel
+            drawer.setBackgroundColor(colorRes(R.color.panel_light));
+        }
+    }
     private void closeDrawer() { translate(-dp(300)); scrim.setAlpha(0f); scrim.setVisibility(View.GONE); }
 
     private void translate(int to) {
