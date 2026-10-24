@@ -6535,3 +6535,8 @@ body[data-mode="dark"][data-bg="image"]::before {
     background: rgba(20, 42, 27, 0.5);
   }
 }
+
+/* dark mode: sidebar should read as a solid panel, not frosted glass */
+body[data-mode="dark"] .sidebar {
+  background: rgba(15, 26, 20, 0.92);
+}
