@@ -6540,3 +6540,65 @@ body[data-mode="dark"][data-bg="image"]::before {
 body[data-mode="dark"] .sidebar {
   background: rgba(15, 26, 20, 0.92);
 }
+
+/* ===== dark mode: invert text colors for readability ===== */
+/* primary text (was deep green-black) */
+body[data-mode="dark"] :is(
+  .page-heading h1, .page-heading p, .eyebrow,
+  .metric-value, .throughput-strip strong,
+  .section-heading h2, .section-heading p,
+  .token-total > strong, .distribution-row > strong, .cache-rate strong,
+  td, td strong, .model-name, .empty strong, .list-summary strong,
+  .modal, .modal-header h2,
+  .field-label, .form-fieldset legend, .group-select-trigger, .group-select-menu,
+  .profile-description > strong, .default-strategy-setting .toggle-label,
+  .secret-value, .settings-section-heading h2,
+  .update-versions code, .update-confirm-version code, .update-release-notes,
+  .update-job-heading, .update-logs,
+  .auth-heading h1, .check-option, .endpoint-text,
+  .agent-empty strong, .agent-tool, .agent-tool-result,
+  .rk-heading strong, .rk-icon, .rk-root-row strong, .rk-empty strong,
+  .rk-user, .rk-assistant-text, .rk-tool, .rk-tool pre, .rk-tool-out,
+  .rk-input textarea, .rk-send, .rk-form select, .rk-no-models strong,
+  .rk-assistant-text h1, .rk-assistant-text h2, .rk-assistant-text h3,
+  .rk-assistant-text h4, .rk-assistant-text blockquote, .rk-chip,
+  .rk-picker-item, .rk-history-head strong, .rk-history-open span,
+  .rk-picker-search, .prefs-row strong, .sidebar,
+  .sidebar .brand-dark .brand-word, .sidebar .workspace-label,
+  .sidebar .workspace-avatar, .sidebar .nav-item,
+  .request-log-green, .log-metric, .log-detail-grid dd, .prefs-file-trigger,
+  input, textarea, select, .search input, .segmented button.selected
+) {
+  color: #d9e5de;
+}
+/* secondary text (was mid green-gray) */
+body[data-mode="dark"] :is(
+  .button, .brand-word, .breadcrumb, .nav-label, .sidebar-version,
+  .user-avatar, .rk-thinking, .rk-thinking-text, .rk-bottom-tools .rk-chip,
+  .rk-tools-row .rk-chip, .settings-section-heading p, .prefs-row small,
+  .empty p, .agent-empty p, .auth-heading p, .field-hint
+) {
+  color: #b0c2b6;
+}
+/* muted text */
+body[data-mode="dark"] :is(
+  .page-heading .eyebrow, .update-release-notes small,
+  .update-job-heading small, .auth-heading small
+) {
+  color: #93a89c;
+}
+/* green accents brighten up */
+body[data-mode="dark"] :is(
+  .badge.green, .log-metric-green, .proxy-result.success,
+  .group-select-option[aria-selected="true"] > svg, .request-log-green,
+  .sidebar .nav-item.active, .sidebar .nav-item.active > svg,
+  .sidebar .nav-indicator
+) {
+  color: #7ed0aa;
+}
+body[data-mode="dark"] .log-metric-blue {
+  color: #8ab4d8;
+}
+body[data-mode="dark"] ::placeholder {
+  color: #6f8578;
+}
