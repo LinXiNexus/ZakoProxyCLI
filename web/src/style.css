@@ -6454,11 +6454,12 @@ body[data-mode="dark"][data-bg="image"]::before {
 
   /* Sidebar uses solid semi-transparent color (no blur) */
   .sidebar {
-    background: rgba(22, 34, 28, 0.92);
-    box-shadow: 0 0 24px rgba(0, 0, 0, 0.18);
+    background: rgba(247, 249, 248, 0.94);
+    box-shadow: 0 0 24px rgba(27, 56, 32, 0.1);
   }
   body[data-mode="dark"] .sidebar {
     background: rgba(15, 26, 20, 0.95);
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.2);
   }
 
   /* Backdrop: no blur, just dimming */
@@ -6471,17 +6472,18 @@ body[data-mode="dark"][data-bg="image"]::before {
 
   /* Sidebar inner elements: solid backgrounds */
   .sidebar .nav-item {
-    background: rgba(255, 255, 255, 0.04);
+    background: transparent;
   }
   .sidebar .nav-item.active {
-    background: rgba(255, 255, 255, 0.08);
+    background: #e9f2ed;
   }
   .sidebar .workspace-label,
-  .sidebar .relay-status {
-    background: rgba(255, 255, 255, 0.03);
-  }
+  .sidebar .relay-status,
   .sidebar .sidebar-bottom {
-    background: rgba(0, 0, 0, 0.08);
+    background: transparent;
+  }
+  body[data-mode="dark"] .sidebar .nav-item.active {
+    background: rgba(255, 255, 255, 0.08);
   }
 
   /* Faster animation curve for high-refresh displays */
@@ -6524,7 +6526,7 @@ body[data-mode="dark"][data-bg="image"]::before {
     backdrop-filter: none !important;
   }
   .sidebar {
-    background: rgba(22, 34, 28, 0.92);
+    background: rgba(247, 249, 248, 0.94);
   }
   body[data-mode="dark"] .sidebar {
     background: rgba(15, 26, 20, 0.95);
