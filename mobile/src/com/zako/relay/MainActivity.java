@@ -61,6 +61,7 @@ public class MainActivity extends Activity {
         } catch (Exception ignored) {
         }
         s.setTextZoom(100);
+        webView.setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null);
         if (Build.VERSION.SDK_INT >= 26) {
             webView.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);
         }

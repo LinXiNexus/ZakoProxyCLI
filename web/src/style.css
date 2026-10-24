@@ -6219,3 +6219,210 @@ body[data-mode="dark"] .rk-composer::before {
   opacity: 0;
   pointer-events: none;
 }
+
+/* =========================================================
+   Performance optimization: reduce GPU load for 60fps
+   ========================================================= */
+
+/* 1. Reduce blur intensity (mobile GPU friendly) */
+.sidebar,
+.topbar,
+.metric,
+.data-section,
+.recent-section,
+.settings-section,
+.chart-section,
+.token-section,
+.modal,
+.rk-settings,
+.rk-history,
+.rk-picker,
+.rk-thinking,
+.rk-tool,
+.rk-user,
+.rk-style-bubble .rk-assistant-text,
+.rk-composer,
+.rk-input,
+.toast,
+.search,
+.list-toolbar {
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  backdrop-filter: blur(10px) saturate(1.1);
+}
+
+/* 2. Optimize background: use fixed pseudo-element instead of background-attachment: fixed */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: inherit;
+}
+body {
+  background: none;
+}
+body[data-bg="plain"],
+body[data-bg="sunset"],
+body[data-bg="ocean"],
+body[data-bg="image"] {
+  background: none;
+}
+body[data-bg="plain"]::before {
+  background: #f3f7f4;
+}
+body[data-bg="sunset"]::before {
+  background:
+    radial-gradient(1100px 720px at 90% -10%, #ffdfae 0%, transparent 60%),
+    radial-gradient(1000px 700px at -10% 10%, #ffd7dd 0%, transparent 55%),
+    radial-gradient(900px 640px at 50% 115%, #ffe9e2 0%, transparent 60%),
+    #fff5ee;
+}
+body[data-bg="ocean"]::before {
+  background:
+    radial-gradient(1100px 760px at 10% -10%, #d6e7ff 0%, transparent 60%),
+    radial-gradient(1000px 720px at 100% 0%, #cfe5f6 0%, transparent 55%),
+    radial-gradient(900px 660px at 50% 120%, #d8f0e4 0%, transparent 60%),
+    #eef4fb;
+}
+body[data-bg="image"]::before {
+  background-color: #f3f7f4;
+  background-image:
+    linear-gradient(rgba(247, 249, 248, 0.42), rgba(247, 249, 248, 0.42)),
+    var(--bg-image);
+  background-repeat: no-repeat, no-repeat;
+  background-position: center, center;
+  background-size: cover, cover;
+}
+body[data-mode="dark"]::before {
+  background:
+    radial-gradient(1200px 800px at 8% -10%, #143224 0%, transparent 60%),
+    radial-gradient(1100px 750px at 100% 0%, #0d2438 0%, transparent 55%),
+    radial-gradient(1000px 750px at 50% 120%, #201f10 0%, transparent 60%),
+    #0f1a14;
+}
+body[data-mode="dark"][data-bg="image"]::before {
+  background-color: #0f1a14;
+  background-image:
+    linear-gradient(rgba(10, 18, 14, 0.5), rgba(10, 18, 14, 0.5)),
+    var(--bg-image);
+}
+
+/* 3. GPU-accelerate animations with will-change */
+.sidebar,
+.nav-backdrop,
+.button,
+.icon-button,
+.rk-chip,
+.rk-send,
+.toast {
+  will-change: transform, opacity;
+}
+
+/* 4. Limit repaint scope with CSS containment */
+.metric,
+.data-section,
+.recent-section,
+.settings-section,
+.chart-section,
+.token-section,
+.modal,
+.rk-settings,
+.rk-history,
+.rk-picker,
+.rk-thinking,
+.rk-tool {
+  contain: layout style paint;
+}
+
+/* 5. Smooth scrolling */
+.scrollable,
+.rk-history,
+.rk-picker,
+.recent-requests-scroll {
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* 6. Optimize animations: use transform and opacity only */
+.sidebar {
+  transition: transform 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.nav-backdrop {
+  transition:
+    opacity 180ms var(--ease-out),
+    visibility 0s linear 180ms;
+}
+.nav-backdrop.is-open {
+  transition-delay: 0s;
+}
+
+/* 7. Mobile-specific optimizations (≤640px) */
+@media (max-width: 640px) {
+  /* Even lower blur on small screens */
+  .sidebar,
+  .topbar,
+  .metric,
+  .data-section,
+  .recent-section,
+  .settings-section,
+  .chart-section,
+  .token-section,
+  .modal,
+  .rk-settings,
+  .rk-history,
+  .rk-picker,
+  .rk-thinking,
+  .rk-tool,
+  .rk-user,
+  .rk-style-bubble .rk-assistant-text,
+  .rk-composer,
+  .rk-input,
+  .toast,
+  .search,
+  .list-toolbar {
+    -webkit-backdrop-filter: blur(8px) saturate(1.05);
+    backdrop-filter: blur(8px) saturate(1.05);
+  }
+
+  /* Disable saturate on very small screens */
+  @media (prefers-reduced-transparency: reduce) {
+    .sidebar,
+    .topbar,
+    .metric,
+    .data-section,
+    .recent-section,
+    .settings-section,
+    .chart-section,
+    .token-section,
+    .modal,
+    .rk-settings,
+    .rk-history,
+    .rk-picker,
+    .rk-thinking,
+    .rk-tool,
+    .rk-user,
+    .rk-style-bubble .rk-assistant-text,
+    .rk-composer,
+    .rk-input,
+    .toast,
+    .search,
+    .list-toolbar {
+      -webkit-backdrop-filter: none;
+      backdrop-filter: none;
+    }
+  }
+}
+
+/* 8. Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  .sidebar,
+  .nav-backdrop,
+  .button,
+  .icon-button,
+  .rk-chip,
+  .rk-send,
+  .toast {
+    will-change: auto;
+  }
+}
