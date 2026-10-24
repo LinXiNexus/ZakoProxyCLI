@@ -6602,3 +6602,21 @@ body[data-mode="dark"] .log-metric-blue {
 body[data-mode="dark"] ::placeholder {
   color: #6f8578;
 }
+
+/* dark mode: page titles and key figures need light text */
+body[data-mode="dark"] .page-heading h1,
+body[data-mode="dark"] .page-heading p,
+body[data-mode="dark"] .page-heading .eyebrow,
+body[data-mode="dark"] .metric-value,
+body[data-mode="dark"] .metric-label,
+body[data-mode="dark"] h1,
+body[data-mode="dark"] h2,
+body[data-mode="dark"] h3,
+body[data-mode="dark"] h4 {
+  color: #e6efe9;
+}
+body[data-mode="dark"] .eyebrow,
+body[data-mode="dark"] .settings-aside .eyebrow,
+body[data-mode="dark"] .auth-heading .eyebrow {
+  color: #a8c2b3;
+}
