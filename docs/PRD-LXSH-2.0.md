@@ -279,14 +279,28 @@ tmoe（2dust 的 tmoe-linux / AryaKrimo 的 tmoe）是 proot/chroot 发行版管
 
 ## 10. 风险与待确认
 
+## 11. 决策记录（2026-10-24 已确认）
+
+| # | 议题 | 决策 |
+|---|---|---|
+| Q1 | Rust 内核去留 | **B：彻底纯 Java 重写**，连代理内核（HTTP 服务器/SQLite/AES-GCM/账号调度/SSE 转发/破甲注入）一并 Java 化；工期上调至约 16~18 周；`zako.db` 结构需在 Java 侧 1:1 兼容读取 |
+| Q2 | rm 拦截方式 | **B：两步确认**——AI 的 rm 先拦截，弹窗让用户选"移动到回收站 / 真实删除 / 取消"；回收站默认 `/sdcard/LXSH/trash/` |
+| Q3 | tmoe 上游 | **A：2dust/tmoe-linux** |
+| Q4 | Kotlin 胶水 | **B：允许 ≤5% Kotlin**，仅用于官方只有 Kotlin 的组件；主体 Java |
+| Q5 | 推进方式 | **A：全自动推进**，每里程碑完成后出 APK 安装验证并汇报 |
+
+### 原"风险与待确认"表（决策后修订）
 | # | 风险/疑问 | 状态 |
 |---|---|---|
-| 1 | "禁止复用 Rust"是否包含代理内核？本文档按"仅禁 HTML UI"理解 | ❓ 待确认 |
-| 2 | rm 拦截的"2m"含义按 "to move" 理解 | ❓ 待确认 |
-| 3 | tmoe 引导的具体上游（2dust/tmoe-linux vs AryaKrimo/tmoe）| ❓ 待确认 |
-| 4 | 并行工具对上游模型的 tool_calls 支持要求（部分渠道不支持数组）| 已兼容：自动退化串行 |
+| 1 | ~~Rust 内核去留~~ | ✅ 已决策：纯 Java（见上）|
+| 2 | ~~rm "2m" 含义~~ | ✅ 已决策：两步确认（见上）|
+| 3 | ~~tmoe 上游~~ | ✅ 已决策：2dust/tmoe-linux（见上）|
+| 4 | 并行工具对上游模型的 tool_calls 支持（部分渠道不支持数组）| 已兼容：自动退化串行 |
 | 5 | Termux bootstrap 裁剪后 apt 依赖完整性需实测 | ⚠ 高风险，M4 前出 PoC |
-| 6 | Java + 官方 Jetpack 新组件生态偏 Kotlin，是否接受少量 Kotlin 胶水代码 | ❓ 待确认 |
+| 6 | ~~Kotlin 胶水~~ | ✅ 已决策：≤5%（见上）|
+| 7 | 纯 Java 重写 `zako.db` 兼容（SQLite 表结构/AES-GCM 密钥密封/Argon2 密码哈希）| 🔴 新增高风险：Java 端需实现 AES-256-GCM（javax.crypto 原生支持）+ Argon2（需引入 BouncyCastle 或自实现）；BouncyCastle 轻量 API 可满足 |
+| 8 | 纯 Java 内嵌 HTTP 服务器选型 | 拟用 `com.sun.net.httpserver.HttpServer`（JDK 内置，Android 可用）或 NanoHTTPD（单文件 MIT，~100KB）；SSE 需自行实现分块推送 |
+| 9 | 上游转发（reqwest 等价物）| OkHttp；SSE 客户端用 okhttp-sse 或自实现 |
 
 ---
 
