@@ -6426,3 +6426,110 @@ body[data-mode="dark"][data-bg="image"]::before {
     will-change: auto;
   }
 }
+
+/* =========================================================
+   Sidebar animation performance: disable blur during motion
+   ========================================================= */
+
+/* Force GPU layer for sidebar */
+@media (max-width: 650px) {
+  .sidebar {
+    transform: translateX(-100%) translateZ(0);
+    will-change: transform;
+    contain: layout style paint;
+  }
+  .sidebar.nav-open {
+    transform: translateX(0) translateZ(0);
+  }
+
+  /* Disable backdrop-filter on sidebar during animation — use solid color instead */
+  .sidebar,
+  .sidebar .nav-item,
+  .sidebar .workspace-label,
+  .sidebar .sidebar-bottom,
+  .sidebar .relay-status {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+
+  /* Sidebar uses solid semi-transparent color (no blur) */
+  .sidebar {
+    background: rgba(22, 34, 28, 0.92);
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.18);
+  }
+  body[data-mode="dark"] .sidebar {
+    background: rgba(15, 26, 20, 0.95);
+  }
+
+  /* Backdrop: no blur, just dimming */
+  .nav-backdrop {
+    background: rgba(20, 42, 27, 0.5);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    will-change: opacity;
+  }
+
+  /* Sidebar inner elements: solid backgrounds */
+  .sidebar .nav-item {
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .sidebar .nav-item.active {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .sidebar .workspace-label,
+  .sidebar .relay-status {
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .sidebar .sidebar-bottom {
+    background: rgba(0, 0, 0, 0.08);
+  }
+
+  /* Faster animation curve for high-refresh displays */
+  .sidebar {
+    transition: transform 180ms cubic-bezier(0.4, 0.0, 0.2, 1);
+  }
+  .nav-backdrop {
+    transition:
+      opacity 140ms cubic-bezier(0.4, 0.0, 0.2, 1),
+      visibility 0s linear 140ms;
+  }
+  .nav-backdrop.is-open {
+    transition-delay: 0s;
+  }
+
+  /* Menu button animation */
+  .menu-button,
+  .mobile-nav-close {
+    will-change: transform, opacity;
+    contain: layout style paint;
+  }
+}
+
+/* High-refresh-rate hint: use faster animations */
+@media (min-width: 651px) {
+  .sidebar {
+    transition: transform 180ms cubic-bezier(0.4, 0.0, 0.2, 1);
+  }
+}
+
+/* Disable blur on sidebar when reduced transparency is preferred */
+@media (prefers-reduced-transparency: reduce) {
+  .sidebar,
+  .sidebar .nav-item,
+  .sidebar .workspace-label,
+  .sidebar .sidebar-bottom,
+  .sidebar .relay-status,
+  .nav-backdrop {
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+  }
+  .sidebar {
+    background: rgba(22, 34, 28, 0.92);
+  }
+  body[data-mode="dark"] .sidebar {
+    background: rgba(15, 26, 20, 0.95);
+  }
+  .nav-backdrop {
+    background: rgba(20, 42, 27, 0.5);
+  }
+}
