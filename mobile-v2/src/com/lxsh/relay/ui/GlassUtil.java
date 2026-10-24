@@ -63,12 +63,13 @@ public final class GlassUtil {
 
     /** Apply a frosted bitmap (blurred + white veil) as a view background. */
     public static void applyGlass(View target, Context context, Bitmap blurred, float veilAlpha) {
-        BitmapDrawable d = new BitmapDrawable(context.getResources(), blurred);
-        // slight white veil to keep text readable
+        // draw veil onto a COPY so we never try to read/write the same bitmap
+        Bitmap veiled = blurred.copy(Bitmap.Config.ARGB_8888, true);
         Paint veil = new Paint();
         veil.setColor(Color.argb((int) (255f * veilAlpha), 255, 255, 255));
-        Canvas c = new Canvas(blurred);
-        c.drawRect(0, 0, blurred.getWidth(), blurred.getHeight(), veil);
+        Canvas c = new Canvas(veiled);
+        c.drawRect(0, 0, veiled.getWidth(), veiled.getHeight(), veil);
+        BitmapDrawable d = new BitmapDrawable(context.getResources(), veiled);
         target.setBackground(d);
         target.invalidate();
     }

@@ -34,7 +34,22 @@ public final class Db {
         }
         db = SQLiteDatabase.openDatabase(file.getAbsolutePath(), null,
                 SQLiteDatabase.OPEN_READWRITE | SQLiteDatabase.NO_LOCALIZED_COLLATORS);
+        ensureSchema(db); // legacy dbs may lack newer tables; add what is missing
         return db;
+    }
+
+    /** Create missing tables only (safe for upgraded legacy databases). */
+    private static void ensureSchema(SQLiteDatabase d) {
+        try {
+            android.database.Cursor c = d.rawQuery(
+                    "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+                    new String[]{"config"});
+            boolean has = c.moveToFirst();
+            c.close();
+            if (!has) initSchema(d);
+        } catch (Exception e) {
+            Log.e(TAG, "schema check failed", e);
+        }
     }
 
     private static void initSchema(SQLiteDatabase d) {

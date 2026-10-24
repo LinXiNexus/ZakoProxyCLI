@@ -34,9 +34,17 @@ public final class SplashActivity extends Activity {
             new Handler(getMainLooper()).post(() -> {
                 startService(new Intent(this, ProxyService.class));
                 new Handler(getMainLooper()).postDelayed(() -> {
-                    startActivity(new Intent(this, MainActivity.class));
+                    boolean authed;
+                    try {
+                        authed = new java.io.File(getFilesDir(), "data/lxsh.db").exists()
+                                && getSharedPreferences("lxsh_prefs", MODE_PRIVATE).getString("session_cookie", "").length() > 0;
+                    } catch (Exception e) {
+                        authed = false;
+                    }
+                    Intent go = new Intent(this, authed ? MainActivity.class : AuthActivity.class);
+                    startActivity(go);
                     finish();
-                }, 500);
+                }, 600);
             });
         }).start();
     }

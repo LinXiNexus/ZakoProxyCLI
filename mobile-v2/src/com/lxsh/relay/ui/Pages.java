@@ -84,17 +84,39 @@ final class DashboardPage extends LinearLayout {
 
     private void refresh() {
         new Thread(() -> {
+            android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
             try {
-                java.net.HttpURLConnection c = (java.net.HttpURLConnection)
+                String cookie = getContext().getSharedPreferences("lxsh_prefs",
+                        android.content.Context.MODE_PRIVATE).getString("session_cookie", "");
+                java.net.HttpURLConnection ch = (java.net.HttpURLConnection)
                         new java.net.URL("http://127.0.0.1:1991/health").openConnection();
-                c.setConnectTimeout(1500);
-                c.setReadTimeout(1500);
-                boolean ok = c.getResponseCode() == 200;
-                c.disconnect();
-                android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+                ch.setConnectTimeout(1500); ch.setReadTimeout(1500);
+                boolean ok = ch.getResponseCode() == 200;
+                ch.disconnect();
                 h.post(() -> status.setText(ok ? "✓ 本地服务运行中" : "✗ 本地服务未运行"));
+                if (!ok || cookie.isEmpty()) return;
+                // statistics
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection)
+                        new java.net.URL("http://127.0.0.1:1991/api/stats").openConnection();
+                c.setConnectTimeout(2000); c.setReadTimeout(2000);
+                c.setRequestProperty("Cookie", cookie);
+                int code = c.getResponseCode();
+                if (code != 200) { c.disconnect(); return; }
+                java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(), java.nio.charset.StandardCharsets.UTF_8));
+                StringBuilder sb = new StringBuilder(); String line;
+                while ((line = r.readLine()) != null) sb.append(line);
+                c.disconnect();
+                org.json.JSONObject obj = new org.json.JSONObject(sb.toString());
+                org.json.JSONObject summary = obj.optJSONObject("summary");
+                if (summary != null) {
+                    String text = "请求总数: " + summary.optLong("total_requests", 0)
+                            + "  ·  密钥: " + summary.optInt("total_keys", 0)
+                            + "  ·  账号: " + summary.optInt("total_accounts", 0)
+                            + "\n输入: " + summary.optLong("input_tokens", 0)
+                            + "  ·  输出: " + summary.optLong("output_tokens", 0);
+                    h.post(() -> stats.setText(text));
+                }
             } catch (Exception e) {
-                android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
                 h.post(() -> status.setText("✗ 无法连接本地服务"));
             }
         }).start();

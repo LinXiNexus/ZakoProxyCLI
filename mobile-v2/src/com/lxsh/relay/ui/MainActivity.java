@@ -36,6 +36,13 @@ public final class MainActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        String cookie = getSharedPreferences("lxsh_prefs", MODE_PRIVATE)
+                .getString("session_cookie", "");
+        if (cookie.isEmpty()) {
+            startActivity(new android.content.Intent(this, AuthActivity.class));
+            finish();
+            return;
+        }
         setContentView(buildUi());
         showPage(0);
     }
