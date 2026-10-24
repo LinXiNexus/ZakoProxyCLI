@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">LXSH</string>
+    <string name="nav_dashboard">仪表盘</string>
+    <string name="nav_chat">对话</string>
+    <string name="nav_scripts">临时按键区</string>
+    <string name="nav_terminal">终端</string>
+    <string name="nav_settings">设置</string>
+    <string name="login_title">欢迎回来</string>
+    <string name="login_hint_user">用户名</string>
+</resources>

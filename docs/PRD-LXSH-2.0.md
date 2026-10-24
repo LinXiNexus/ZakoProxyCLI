@@ -288,6 +288,7 @@ tmoe（2dust 的 tmoe-linux / AryaKrimo 的 tmoe）是 proot/chroot 发行版管
 | Q3 | tmoe 上游 | **A：2dust/tmoe-linux** |
 | Q4 | Kotlin 胶水 | **B：允许 ≤5% Kotlin**，仅用于官方只有 Kotlin 的组件；主体 Java |
 | Q5 | 推进方式 | **A：全自动推进**，每里程碑完成后出 APK 安装验证并汇报 |
+| Q6 | 品牌标识（追加确认）| **所有 zako 标识一律换为 lxsh**：包名 `com.lxsh.relay`（全新应用）、数据库文件 `zako.db → lxsh.db`、cookie/session/token 前缀全 lxsh。旧数据通过 root 首启迁移（`MigrationUtil`：拷贝旧 `files/data` 目录 + 数据库改名）；无 root 且无新数据时走全新初始化向导 |
 
 ### 原"风险与待确认"表（决策后修订）
 | # | 风险/疑问 | 状态 |
