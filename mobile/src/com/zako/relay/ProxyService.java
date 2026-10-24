@@ -17,22 +17,22 @@ import java.io.InputStream;
 import java.io.OutputStream;
 
 public class ProxyService extends Service {
-    private static final String TAG = "ZakoProxy";
-    private static final String CHANNEL = "zako_proxy";
+    private static final String TAG = "LxshProxy";
+    private static final String CHANNEL = "lxsh_proxy";
     private Process process;
 
     @Override
     public void onCreate() {
         super.onCreate();
         startForegroundCompat();
-        new Thread(this::prepareAndStart, "zako-boot").start();
+        new Thread(this::prepareAndStart, "lxsh-boot").start();
     }
 
     private void startForegroundCompat() {
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationManager nm = getSystemService(NotificationManager.class);
             NotificationChannel ch = new NotificationChannel(
-                    CHANNEL, "ZakoAI 本地服务", NotificationManager.IMPORTANCE_LOW);
+                    CHANNEL, "LXSH 本地服务", NotificationManager.IMPORTANCE_LOW);
             ch.setShowBadge(false);
             nm.createNotificationChannel(ch);
         }
@@ -42,7 +42,7 @@ public class ProxyService extends Service {
         } else {
             b = new Notification.Builder(this);
         }
-        b.setContentTitle("ZakoAI 正在运行")
+        b.setContentTitle("LXSH 正在运行")
                 .setContentText("本地代理与控制台已启动")
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setOngoing(true);
@@ -65,7 +65,7 @@ public class ProxyService extends Service {
             //noinspection ResultOfMethodCallIgnored
             data.mkdirs();
 
-            File bin = new File(getApplicationInfo().nativeLibraryDir, "libzakoai.so");
+            File bin = new File(getApplicationInfo().nativeLibraryDir, "liblxshai.so");
             if (!bin.exists()) {
                 Log.e(TAG, "relay binary missing at " + bin);
                 return;

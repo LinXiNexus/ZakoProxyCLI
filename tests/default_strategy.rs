@@ -8,13 +8,13 @@ use axum::{
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
 use tower::ServiceExt;
-use zakoai_proxy::{
+use lxshai_proxy::{
     Shared, app, new_app, profiles,
     store::{self, Account, ApiKey, Group},
 };
 
 const DEFAULT: &str = include_str!("../profiles/default.md");
-const SESSION: &str = "zako_session=default-strategy-session";
+const SESSION: &str = "lxsh_session=default-strategy-session";
 const PROTOCOLS: [&str; 4] = ["responses", "compact", "chat", "anthropic"];
 
 fn fixture() -> (tempfile::TempDir, Shared) {

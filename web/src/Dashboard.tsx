@@ -153,7 +153,7 @@ export function Dashboard({
     );
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `zako-usage-${query.from}-${query.to}.csv`;
+    anchor.download = `lxsh-usage-${query.from}-${query.to}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
   }

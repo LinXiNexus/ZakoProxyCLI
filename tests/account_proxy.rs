@@ -19,7 +19,7 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 use tower::ServiceExt;
-use zakoai_proxy::{
+use lxshai_proxy::{
     Shared, app, new_app,
     store::{self, Account, ApiKey, Group},
 };
@@ -187,7 +187,7 @@ async fn console(
                 .header(
                     "cookie",
                     if authenticated {
-                        "zako_session=proxy-console-session"
+                        "lxsh_session=proxy-console-session"
                     } else {
                         ""
                     },

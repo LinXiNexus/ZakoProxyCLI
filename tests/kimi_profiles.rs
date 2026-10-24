@@ -1,7 +1,7 @@
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
-use zakoai_proxy::{profiles, store::Group};
+use lxshai_proxy::{profiles, store::Group};
 
 #[test]
 fn kimi_catalog_matches_only_selected_exact_models() {
@@ -31,7 +31,7 @@ fn kimi_catalog_matches_only_selected_exact_models() {
         assert!(
             profile
                 .instruction
-                .contains("ZakoAI · kimi-break API 内联适配")
+                .contains("LXSH · kimi-break API 内联适配")
         );
         assert!(
             profile

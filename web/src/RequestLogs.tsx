@@ -196,7 +196,7 @@ export function RequestLogs({
       }));
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `zako-call-logs-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
+      anchor.download = `lxsh-call-logs-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
       document.body.append(anchor);
       anchor.click();
       anchor.remove();

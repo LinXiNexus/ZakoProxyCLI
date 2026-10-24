@@ -1,6 +1,6 @@
 # Console API contract
 
-All administration endpoints use `/api/`. Session cookie is `zako_session`, HttpOnly, SameSite=Strict. All requests include `X-Console-Path` equal to `location.pathname` (the security entry). Errors are `{ "error": "message" }`. JSON POST/PUT bodies use snake_case.
+All administration endpoints use `/api/`. Session cookie is `lxsh_session`, HttpOnly, SameSite=Strict. All requests include `X-Console-Path` equal to `location.pathname` (the security entry). Errors are `{ "error": "message" }`. JSON POST/PUT bodies use snake_case.
 
 - GET `/api/bootstrap`: `{initialized:boolean, authenticated:boolean, username:string}`
 - POST `/api/setup`, POST `/api/login`: `{username,password}` -> session cookie

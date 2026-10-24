@@ -10,12 +10,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tower::ServiceExt;
-use zakoai_proxy::{
+use lxshai_proxy::{
     Shared, app, new_app, profiles,
     store::{self, Account, ApiKey, Group},
 };
 
-const PROXY_KEY: &str = "sk-zako-multimodel-integration";
+const PROXY_KEY: &str = "sk-lxsh-multimodel-integration";
 const UPSTREAM_KEY: &str = "multimodel-upstream-secret";
 
 fn fixture() -> (tempfile::TempDir, Shared) {

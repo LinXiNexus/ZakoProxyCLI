@@ -296,7 +296,7 @@ export function PersonalizationPage({
 
         <div className="prefs-about">
           <Info size={14} />
-          ZakoAI {version} · 个性化设置保存在本机
+          LXSH {version} · 个性化设置保存在本机
         </div>
       </section>
     </div>

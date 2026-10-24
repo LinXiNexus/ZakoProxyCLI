@@ -143,7 +143,7 @@ public class MainActivity extends Activity {
                     status.setText("本地服务启动失败\n\n最近日志：\n" + tailLog());
                 }
             });
-        }, "zako-health").start();
+        }, "lxsh-health").start();
     }
 
     private boolean probe() {

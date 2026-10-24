@@ -1,4 +1,4 @@
-# ZakoAI Proxy
+# LXSH Proxy
 
 简体中文 · [English](README.en.md) · [安全说明](SECURITY.md) · [API 契约](API_CONTRACT.md)
 
@@ -41,7 +41,7 @@ You are solely responsible for complying with the laws and regulations of your j
 
 ```sh
 git clone https://github.com/mizaawa/ZakoProxyCLI.git
-cd ZakoProxyCLI
+cd LxshProxyCLI
 docker compose pull
 docker compose build --pull
 docker compose up -d --no-build
@@ -92,7 +92,7 @@ Compose 同时启动隔离的 `updater` 服务，不对宿主机发布端口。�
 
 ### v0.6.0 仓库改名后的首次升级
 
-官方仓库已改名为 ZakoProxyCLI。v0.5.0 及更早版本的更新器严格匹配旧 Release URL，因此仓库改名后网页检查或更新可能失败。请在原部署目录执行一次以下操作，同时替换 proxy 和 updater；保持原目录、Compose 项目名和数据卷不变。若本地修改导致拉取失败，请先处理冲突。
+官方仓库已改名为 LxshProxyCLI。v0.5.0 及更早版本的更新器严格匹配旧 Release URL，因此仓库改名后网页检查或更新可能失败。请在原部署目录执行一次以下操作，同时替换 proxy 和 updater；保持原目录、Compose 项目名和数据卷不变。若本地修改导致拉取失败，请先处理冲突。
 
 ```sh
 git remote set-url origin https://github.com/mizaawa/ZakoProxyCLI.git
@@ -160,7 +160,7 @@ curl -N http://localhost:1990/v1/responses \
 
 工具调用与流结束：Responses 的 `response.completed`、Anthropic 的 `message_stop`、Chat 的 `[DONE]` 或全部 `choices` 的非空 `finish_reason` 都会释放账号并发槽，后续工具结果可立即续接；仍继续透传尾部用量。Chat 中转在完整 `finish_reason` 后正常 EOF、未发送 `[DONE]` 时也视为正常结束；仅部分 choice 结束或没有完成标志仍按截断处理。Responses 因 `max_output_tokens` / `content_filter` 正常停止不会累积账号故障，真正的错误、连接中断和截断仍触发故障冷却。
 
-排查 429：本地 RPM / 并发超限返回 `429`，错误 `code` 分别为 `rate_limit_exceeded` / `concurrency_limit_exceeded`；账号故障冷却返回 `503` 和 `upstream_cooldown`，`Retry-After` 为剩余冷却秒数（RPM 为当前分钟剩余秒数，并发为建议 1 秒）。这些本地调度错误含 `x-zako-error-source: local` 与请求 ID。真实上游 HTTP 错误标为 `upstream`，保留状态、脱敏正文及 `Retry-After`；不会通过更换状态码掩盖上游限流。
+排查 429：本地 RPM / 并发超限返回 `429`，错误 `code` 分别为 `rate_limit_exceeded` / `concurrency_limit_exceeded`；账号故障冷却返回 `503` 和 `upstream_cooldown`，`Retry-After` 为剩余冷却秒数（RPM 为当前分钟剩余秒数，并发为建议 1 秒）。这些本地调度错误含 `x-lxsh-error-source: local` 与请求 ID。真实上游 HTTP 错误标为 `upstream`，保留状态、脱敏正文及 `Retry-After`；不会通过更换状态码掩盖上游限流。
 
 ## 统计与存储
 
@@ -177,7 +177,7 @@ curl -N http://localhost:1990/v1/responses \
 
 ```sh
 docker compose stop
-docker compose cp proxy:/data ./zako-backup
+docker compose cp proxy:/data ./lxsh-backup
 docker compose start
 ```
 

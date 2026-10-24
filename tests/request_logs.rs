@@ -6,7 +6,7 @@ use axum::{
 use rusqlite::{Connection, params};
 use serde_json::{Value, json};
 use tower::ServiceExt;
-use zakoai_proxy::{
+use lxshai_proxy::{
     Shared, app, new_app,
     store::{Account, ApiKey, RequestLog, Settings, Store, now, usage},
 };
@@ -67,7 +67,7 @@ async fn request(state: &Shared, method: &str, path: &str) -> Response {
             Request::builder()
                 .method(method)
                 .uri(path)
-                .header("cookie", "zako_session=logs-session")
+                .header("cookie", "lxsh_session=logs-session")
                 .header("x-console-path", "/console")
                 .header("host", "localhost:1990")
                 .body(Body::empty())
@@ -189,13 +189,13 @@ async fn log_routes_require_session_console_entry_and_same_origin() {
                 StatusCode::UNAUTHORIZED,
             ),
             (
-                "zako_session=logs-session",
+                "lxsh_session=logs-session",
                 "/wrong",
                 "http://localhost:1990",
                 StatusCode::NOT_FOUND,
             ),
             (
-                "zako_session=logs-session",
+                "lxsh_session=logs-session",
                 "/console",
                 "https://attacker.invalid",
                 StatusCode::FORBIDDEN,

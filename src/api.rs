@@ -34,7 +34,7 @@ pub(crate) fn cookie(headers: &HeaderMap) -> &str {
         .and_then(|v| v.to_str().ok())
         .unwrap_or("")
         .split(';')
-        .find_map(|part| part.trim().strip_prefix("zako_session="))
+        .find_map(|part| part.trim().strip_prefix("lxsh_session="))
         .unwrap_or("")
 }
 
@@ -223,7 +223,7 @@ fn session_response(
         [(
             header::SET_COOKIE,
             format!(
-                "zako_session={secret}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400{secure}"
+                "lxsh_session={secret}; Path=/; HttpOnly; SameSite=Strict; Max-Age=86400{secure}"
             ),
         )],
         Json(json!({"ok":true})),
@@ -361,7 +361,7 @@ pub async fn logout(State(s): State<Shared>, h: HeaderMap) -> Result<Response, A
     Ok((
         [(
             header::SET_COOKIE,
-            "zako_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0",
+            "lxsh_session=; Path=/; HttpOnly; SameSite=Strict; Max-Age=0",
         )],
         Json(json!({"ok":true})),
     )
@@ -629,7 +629,7 @@ pub async fn create_key(
 ) -> ApiResult<Value> {
     auth(&s, &h)?;
     name(&input.name)?;
-    let key = token("sk-zako-");
+    let key = token("sk-lxsh-");
     let k = ApiKey {
         id: id(),
         name: input.name,

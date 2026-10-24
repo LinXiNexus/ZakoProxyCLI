@@ -1,4 +1,4 @@
-# ZakoAI API task execution profile
+# LXSH API task execution profile
 
 ## Request and runtime
 

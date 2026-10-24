@@ -56,7 +56,7 @@ function Brand({ dark = false }: { dark?: boolean }) {
         <Command size={24} strokeWidth={2.3} />
       </span>
       <span className="brand-word">
-        ZAKO<span>API RELAY</span>
+        LXSH<span>API RELAY</span>
       </span>
     </div>
   );
@@ -109,7 +109,7 @@ function Authentication({
           <ShieldCheck size={28} strokeWidth={1.6} />
         </div>
         <div className="auth-heading">
-          <span className="eyebrow">ZAKO CONSOLE</span>
+          <span className="eyebrow">LXSH CONSOLE</span>
           <h1>{initialized ? "欢迎回来" : "创建管理员账号"}</h1>
           <p>
             {initialized
@@ -178,7 +178,7 @@ function Authentication({
         </div>
       </main>
       <footer>
-        <span>© {new Date().getFullYear()} ZAKO</span>
+        <span>© {new Date().getFullYear()} LXSH</span>
         <span>API Relay Console</span>
       </footer>
     </div>
@@ -189,7 +189,7 @@ export default function App() {
   const [initialized, setInitialized] = useState<boolean | null>(null);
   const [state, setState] = useState<State | null>(null);
   const [page, setPage] = useState<Page>(() => {
-    const stored = localStorage.getItem("zako-page");
+    const stored = localStorage.getItem("lxsh-page");
     return navigation.some((item) => item.id === stored)
       ? (stored as Page)
       : "dashboard";
@@ -256,7 +256,7 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [notice]);
   useEffect(() => {
-    localStorage.setItem("zako-page", page);
+    localStorage.setItem("lxsh-page", page);
     setMobileNav(false);
     if (page !== "settings") setUpdateFocusRequest(0);
   }, [page]);
@@ -377,7 +377,7 @@ export default function App() {
             <span className="status-dot" />
           </div>
           <div className="sidebar-version">
-            <span>ZAKO / v{version}</span>
+            <span>LXSH / v{version}</span>
             <a
               href="https://github.com/LinXiNexus/ZakoProxyCLI"
               target="_blank"
@@ -467,7 +467,7 @@ export default function App() {
           )}
         </main>
         <footer className="workspace-footer">
-          <span>ZAKO API RELAY</span>
+          <span>LXSH API RELAY</span>
           <span>
             <ShieldCheck size={12} />
             自托管工作空间

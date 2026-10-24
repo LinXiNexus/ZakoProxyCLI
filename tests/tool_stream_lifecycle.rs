@@ -13,7 +13,7 @@ use std::{
     time::Duration,
 };
 use tower::ServiceExt;
-use zakoai_proxy::{
+use lxshai_proxy::{
     Shared, app, new_app,
     store::{self, Account, ApiKey, Group},
 };

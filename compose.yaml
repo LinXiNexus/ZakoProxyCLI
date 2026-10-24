@@ -1,4 +1,4 @@
-name: zakoai-proxy
+name: lxshai-proxy
 
 services:
   proxy:
@@ -17,11 +17,11 @@ services:
       WEB_DIR: /app/web/dist
       BIND_ADDR: 0.0.0.0:1990
       TRUST_PROXY: "${TRUST_PROXY:-0}"
-      RUST_LOG: "${RUST_LOG:-zakoai_proxy=info}"
+      RUST_LOG: "${RUST_LOG:-lxshai_proxy=info}"
       UPDATER_URL: http://updater:9000/
       UPDATER_TOKEN_FILE: /control/token
     volumes:
-      - zako-data:/data
+      - lxsh-data:/data
       - update-control:/control:ro
     depends_on:
       updater:
@@ -44,12 +44,12 @@ services:
     init: true
     restart: unless-stopped
     environment:
-      UPDATER_PROJECT_NAME: "${COMPOSE_PROJECT_NAME:-zakoai-proxy}"
+      UPDATER_PROJECT_NAME: "${COMPOSE_PROJECT_NAME:-lxshai-proxy}"
       UPDATER_SERVICE: proxy
       DOCKER_CONFIG: /updates/docker
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - zako-data:/app-data
+      - lxsh-data:/app-data
       - update-control:/control
       - update-state:/updates
     read_only: true
@@ -67,6 +67,6 @@ services:
     stop_grace_period: 45s
 
 volumes:
-  zako-data:
+  lxsh-data:
   update-control:
   update-state:

@@ -32,7 +32,7 @@ export const defaultPrefs: Prefs = {
   compact: false,
 };
 
-const KEY = "zako.prefs.v1";
+const KEY = "lxsh.prefs.v1";
 
 export function loadPrefs(): Prefs {
   try {
@@ -50,5 +50,5 @@ export function savePrefs(prefs: Prefs) {
   } catch {
     /* ignore */
   }
-  window.dispatchEvent(new Event("zako-prefs"));
+  window.dispatchEvent(new Event("lxsh-prefs"));
 }

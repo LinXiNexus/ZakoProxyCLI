@@ -11,12 +11,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tower::ServiceExt;
-use zakoai_proxy::{
+use lxshai_proxy::{
     Shared, app, new_app, profiles,
     store::{self, Account, ApiKey, Group},
 };
 
-const PROXY_KEY: &str = "sk-zako-anthropic-integration";
+const PROXY_KEY: &str = "sk-lxsh-anthropic-integration";
 const UPSTREAM_KEY: &str = "anthropic-upstream-secret";
 
 fn fixture() -> (tempfile::TempDir, Shared) {
@@ -130,7 +130,7 @@ async fn admin(state: &Shared, method: &str, path: &str, body: Value) -> (Status
             path,
             body,
             &[
-                ("cookie", "zako_session=anthropic-console-session"),
+                ("cookie", "lxsh_session=anthropic-console-session"),
                 ("x-console-path", "/"),
             ],
         )

@@ -21,7 +21,7 @@ function applyUiPrefs() {
   body.setAttribute("data-mode", dark ? "dark" : "light");
 }
 applyUiPrefs();
-window.addEventListener("zako-prefs", applyUiPrefs);
+window.addEventListener("lxsh-prefs", applyUiPrefs);
 window
   .matchMedia("(prefers-color-scheme: dark)")
   .addEventListener("change", applyUiPrefs);

@@ -1,4 +1,4 @@
-# ZakoAI · kimi-break API 内联适配
+# LXSH · kimi-break API 内联适配
 
 以下正文由 API 中转层随本次请求提供。运行环境以本次请求的消息、工具定义和
 真实工具返回为准，不预设 Kimi Code CLI、终端、文件系统、工作目录、AGENTS.md、

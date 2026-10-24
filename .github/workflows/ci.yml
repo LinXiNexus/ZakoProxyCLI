@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [rust-quality, backend-tests, frontend]
     env:
-      COMPOSE_PROJECT_NAME: zakoai-ci-compose
+      COMPOSE_PROJECT_NAME: lxshai-ci-compose
     permissions:
       contents: read
       packages: write
@@ -78,25 +78,25 @@ jobs:
           docker compose config --quiet
           docker compose pull
           docker compose build --pull
-          docker tag ghcr.io/mizaawa/zakoai-proxy-cli:latest zakoai-proxy:ci
+          docker tag ghcr.io/mizaawa/zakoai-proxy-cli:latest lxshai-proxy:ci
           version=$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')
-          test "$(docker image inspect zakoai-proxy:ci --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "$version"
+          test "$(docker image inspect lxshai-proxy:ci --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "$version"
       - name: Test real Docker replacement and rollback
         shell: bash
         run: |
           set -euo pipefail
           test_binary="$(cargo test --locked --lib --no-run --message-format=json \
             | python3 -c 'import json,sys; artifacts=[json.loads(line) for line in sys.stdin]; print(next(item["executable"] for item in artifacts if item.get("reason") == "compiler-artifact" and item.get("profile", {}).get("test") and item.get("executable")))')"
-          sudo env UPDATER_TEST_IMAGE=zakoai-proxy:ci "$test_binary" \
+          sudo env UPDATER_TEST_IMAGE=lxshai-proxy:ci "$test_binary" \
             update::tests::real_docker_replacement_and_rollback_preserve_login_and_data \
             --ignored --nocapture
       - name: Smoke test nonroot image and persistent setup
         shell: bash
         run: |
           set -euo pipefail
-          docker run --detach --name zakoai-ci --read-only --tmpfs /tmp --cap-drop ALL \
+          docker run --detach --name lxshai-ci --read-only --tmpfs /tmp --cap-drop ALL \
             --security-opt no-new-privileges:true --publish 127.0.0.1:1990:1990 \
-            --volume zakoai-ci-data:/data zakoai-proxy:ci
+            --volume lxshai-ci-data:/data lxshai-proxy:ci
           for attempt in $(seq 1 60); do
             if curl --fail --silent http://127.0.0.1:1990/health > /dev/null; then break; fi
             sleep 2
@@ -108,24 +108,24 @@ jobs:
           curl --fail --silent --show-error http://127.0.0.1:1990/ | grep -F '<title>'
           curl --fail --silent --show-error http://127.0.0.1:1990/assets/third-party-licenses.txt \
             | grep -F 'SIL OPEN FONT LICENSE'
-          test "$(docker exec zakoai-ci id -u)" = 10001
+          test "$(docker exec lxshai-ci id -u)" = 10001
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:1990/v1/models)" = 401
           SMOKE_PASSWORD="$(openssl rand -hex 24)"
           curl --fail --silent --show-error http://127.0.0.1:1990/api/setup \
             --header 'Content-Type: application/json' --header 'X-Console-Path: /' \
             --data "{\"username\":\"ci-smoke\",\"password\":\"${SMOKE_PASSWORD}\"}" > /dev/null
-          docker restart zakoai-ci
+          docker restart lxshai-ci
           for attempt in $(seq 1 30); do
             if curl --fail --silent http://127.0.0.1:1990/health > /dev/null; then break; fi
             sleep 2
           done
           curl --fail --silent --show-error http://127.0.0.1:1990/api/bootstrap \
             | python3 -c 'import json,sys; assert json.load(sys.stdin)["initialized"] is True'
-          docker exec zakoai-ci test -s /data/master.key
-          docker exec zakoai-ci test -s /data/zako.db
+          docker exec lxshai-ci test -s /data/master.key
+          docker exec lxshai-ci test -s /data/zako.db
       - name: Smoke test isolated site-update controller
         env:
-          COMPOSE_PROJECT_NAME: zakoai-ci-compose
+          COMPOSE_PROJECT_NAME: lxshai-ci-compose
           ZAKO_PORT: "1991"
         run: |
           set -euo pipefail
@@ -173,16 +173,16 @@ jobs:
           set -euo pipefail
           image="${IMAGE_NAME,,}"
           printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "${{ github.actor }}" --password-stdin
-          docker tag zakoai-proxy:ci "${image}:${GITHUB_SHA}"
-          docker tag zakoai-proxy:ci "${image}:latest"
+          docker tag lxshai-proxy:ci "${image}:${GITHUB_SHA}"
+          docker tag lxshai-proxy:ci "${image}:latest"
           docker push "${image}:${GITHUB_SHA}"
           docker push "${image}:latest"
       - name: Container diagnostics and cleanup
         if: always()
         run: |
-          docker logs zakoai-ci 2>&1 || true
-          docker inspect zakoai-ci --format '{{json .State.Health}}' || true
-          docker rm --force zakoai-ci || true
-          docker volume rm zakoai-ci-data || true
-          COMPOSE_PROJECT_NAME=zakoai-ci-compose ZAKO_PORT=1991 docker compose logs --tail=30 || true
-          COMPOSE_PROJECT_NAME=zakoai-ci-compose ZAKO_PORT=1991 docker compose down -v || true
+          docker logs lxshai-ci 2>&1 || true
+          docker inspect lxshai-ci --format '{{json .State.Health}}' || true
+          docker rm --force lxshai-ci || true
+          docker volume rm lxshai-ci-data || true
+          COMPOSE_PROJECT_NAME=lxshai-ci-compose ZAKO_PORT=1991 docker compose logs --tail=30 || true
+          COMPOSE_PROJECT_NAME=lxshai-ci-compose ZAKO_PORT=1991 docker compose down -v || true

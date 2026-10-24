@@ -305,7 +305,7 @@ impl AdmissionError {
         );
         response
             .headers_mut()
-            .insert("x-zako-error-source", HeaderValue::from_static("local"));
+            .insert("x-lxsh-error-source", HeaderValue::from_static("local"));
         response
     }
 }
@@ -649,7 +649,7 @@ async fn forward(state: Shared, headers: HeaderMap, body: Value, protocol: &str)
         }
         let mut response_headers = HeaderMap::new();
         if !status.is_success() {
-            response_headers.insert("x-zako-error-source", HeaderValue::from_static("upstream"));
+            response_headers.insert("x-lxsh-error-source", HeaderValue::from_static("upstream"));
         }
         for name in ["content-type", "x-request-id", "request-id", "retry-after"] {
             if let Some(value) = upstream.headers().get(name) {

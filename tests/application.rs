@@ -7,7 +7,7 @@ use axum::{
 use serde_json::{Value, json};
 use std::sync::Arc;
 use tower::ServiceExt;
-use zakoai_proxy::{Shared, app, new_app, profiles};
+use lxshai_proxy::{Shared, app, new_app, profiles};
 
 fn fixture() -> (tempfile::TempDir, Shared) {
     let dir = tempfile::tempdir().unwrap();
@@ -160,7 +160,7 @@ async fn first_run_crud_and_authentication() {
     assert_eq!(status, StatusCode::OK);
     let kid = key["id"].as_str().unwrap();
     let raw = key["key"].as_str().unwrap();
-    assert!(raw.starts_with("sk-zako-"));
+    assert!(raw.starts_with("sk-lxsh-"));
     let (_, revealed, _) = request(
         &s,
         "POST",

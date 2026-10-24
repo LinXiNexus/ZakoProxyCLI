@@ -1,4 +1,4 @@
-# ZakoAI Proxy
+# LXSH Proxy
 
 [简体中文](README.md) · English · [Security](SECURITY.md) · [API contract](API_CONTRACT.md)
 
@@ -18,7 +18,7 @@ Requires Docker Engine/Desktop with Docker Compose v2. Build from the repository
 
 ```sh
 git clone https://github.com/mizaawa/ZakoProxyCLI.git
-cd ZakoProxyCLI
+cd LxshProxyCLI
 docker compose pull
 docker compose build --pull
 docker compose up -d --no-build
@@ -61,7 +61,7 @@ Existing installations must first pull this source version and run the Compose b
 
 ### First Upgrade After The v0.6.0 Repository Rename
 
-The official repository is now ZakoProxyCLI. The updater in v0.5.0 and earlier strictly matches the old Release URL, so console checks or updates may fail after the rename. Run the following once from the existing deployment directory to replace both proxy and updater. Keep the directory, Compose project name, and named volumes unchanged. Resolve local changes first if the pull cannot fast-forward.
+The official repository is now LxshProxyCLI. The updater in v0.5.0 and earlier strictly matches the old Release URL, so console checks or updates may fail after the rename. Run the following once from the existing deployment directory to replace both proxy and updater. Keep the directory, Compose project name, and named volumes unchanged. Resolve local changes first if the pull cannot fast-forward.
 
 ```sh
 git remote set-url origin https://github.com/mizaawa/ZakoProxyCLI.git
@@ -148,7 +148,7 @@ Back up the **entire `/data` directory, including `master.key`**, to restricted 
 
 ```sh
 docker compose stop
-docker compose cp proxy:/data ./zako-backup
+docker compose cp proxy:/data ./lxsh-backup
 docker compose start
 ```
 

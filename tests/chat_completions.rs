@@ -12,12 +12,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 use tower::ServiceExt;
-use zakoai_proxy::{
+use lxshai_proxy::{
     Shared, app, new_app, profiles,
     store::{self, Account, ApiKey, Group},
 };
 
-const PROXY_KEY: &str = "sk-zako-chat-integration";
+const PROXY_KEY: &str = "sk-lxsh-chat-integration";
 const UPSTREAM_KEY: &str = "chat-upstream-secret";
 
 fn fixture() -> (tempfile::TempDir, Shared) {
@@ -140,7 +140,7 @@ async fn admin_request(
                 .method(method)
                 .uri(path)
                 .header("content-type", "application/json")
-                .header("cookie", "zako_session=chat-console-session")
+                .header("cookie", "lxsh_session=chat-console-session")
                 .header("x-console-path", "/")
                 .body(Body::from(body.to_string()))
                 .unwrap(),

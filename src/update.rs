@@ -21,7 +21,7 @@ use tokio::{
 };
 
 const REPOSITORY: &str = "https://github.com/LinXiNexus/ZakoProxyCLI.git";
-const RELEASE_API: &str = "https://api.github.com/repos/LinXiNexus/ZakoProxyCLI/releases/latest";
+const RELEASE_API: &str = "https://api.github.com/repos/LinXiNexus/LxshProxyCLI/releases/latest";
 const IMAGE: &str = "ghcr.io/linxinexus/zakoai-proxy-cli:latest";
 const MAX_LOGS: usize = 150;
 const RELEASE_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
@@ -42,7 +42,7 @@ struct ReleaseCache {
 async fn fetch_release(client: &reqwest::Client, url: &str) -> Result<Release, String> {
     let reply = client
         .get(url)
-        .header("User-Agent", "ZakoAI-Updater")
+        .header("User-Agent", "LXSH-Updater")
         .header("Accept", "application/vnd.github+json")
         .timeout(Duration::from_secs(20))
         .send()
@@ -401,7 +401,7 @@ impl Agent {
             };
             let interrupted = state.job.as_ref().filter(|j| j.active()).cloned();
             let project =
-                std::env::var("UPDATER_PROJECT_NAME").unwrap_or_else(|_| "zakoai-proxy".into());
+                std::env::var("UPDATER_PROJECT_NAME").unwrap_or_else(|_| "lxshai-proxy".into());
             let service = std::env::var("UPDATER_SERVICE").unwrap_or_else(|_| "proxy".into());
             if !valid_label(&project) || !valid_label(&service) || service != "proxy" {
                 return Err("Invalid fixed compose scope".into());
@@ -448,7 +448,7 @@ impl Agent {
                 project,
                 service,
                 client: reqwest::Client::builder()
-                    .user_agent("ZakoAI-Updater")
+                    .user_agent("LXSH-Updater")
                     .redirect(reqwest::redirect::Policy::none())
                     .timeout(Duration::from_secs(20))
                     .build()
@@ -793,7 +793,7 @@ impl Agent {
         {
             return Err("Release source version does not match its tag".into());
         }
-        let built_image = format!("zakoai-proxy:source-{id}");
+        let built_image = format!("lxshai-proxy:source-{id}");
         self.progress(
             "building",
             "Building the official release source; the current site remains online",
@@ -849,7 +849,7 @@ impl Agent {
             hex::encode(Sha256::digest(master)).as_bytes(),
         )
         .await?;
-        let old_tag = format!("zakoai-proxy:rollback-{id}");
+        let old_tag = format!("lxshai-proxy:rollback-{id}");
         self.command(
             "docker",
             &["image", "tag", original_image, &old_tag],
@@ -1482,7 +1482,7 @@ mod tests {
             target
         } else if path == "/containers/proxy/json" {
             if s.new_exists {
-                json!({"Id":NEW_ID,"Config":{"Labels":{"com.docker.compose.project":"zakoai-proxy","com.docker.compose.service":"proxy"}}})
+                json!({"Id":NEW_ID,"Config":{"Labels":{"com.docker.compose.project":"lxshai-proxy","com.docker.compose.service":"proxy"}}})
             } else if !s.renamed {
                 json!({"Id":OLD_ID})
             } else {
@@ -1534,7 +1534,7 @@ mod tests {
         std::fs::write(data_dir.join("master.key"), "persistent-key").unwrap();
         let state_dir = directory.path().join("state");
         std::fs::create_dir(&state_dir).unwrap();
-        let target = json!({"Id":OLD_ID,"Name":"/proxy","Image":"sha256:old-image","Config":{"Image":"old","Env":["DATA_DIR=/data","PRIVATE=must-not-be-logged"],"Labels":{"com.docker.compose.project":"zakoai-proxy","com.docker.compose.service":"proxy"},"Healthcheck":{"Test":["CMD","curl"]}},"HostConfig":{"Binds":["app-data:/data:rw"],"PortBindings":{"1990/tcp":[{"HostPort":"1990"}]},"ReadonlyRootfs":true},"Mounts":[{"Type":"volume","Destination":"/data","Name":"app-data"}],"NetworkSettings":{"Networks":{"default":{"Aliases":["proxy"]}}},"State":{"Running":true,"Health":{"Status":"healthy"}}});
+        let target = json!({"Id":OLD_ID,"Name":"/proxy","Image":"sha256:old-image","Config":{"Image":"old","Env":["DATA_DIR=/data","PRIVATE=must-not-be-logged"],"Labels":{"com.docker.compose.project":"lxshai-proxy","com.docker.compose.service":"proxy"},"Healthcheck":{"Test":["CMD","curl"]}},"HostConfig":{"Binds":["app-data:/data:rw"],"PortBindings":{"1990/tcp":[{"HostPort":"1990"}]},"ReadonlyRootfs":true},"Mounts":[{"Type":"volume","Destination":"/data","Name":"app-data"}],"NetworkSettings":{"Networks":{"default":{"Aliases":["proxy"]}}},"State":{"Running":true,"Health":{"Status":"healthy"}}});
         let docker = Arc::new(Mutex::new(DockerFixture {
             target,
             stopped: false,
@@ -1556,7 +1556,7 @@ mod tests {
             if program == "git" && args.first() == Some(&"checkout") {
                 std::fs::write(
                     directory.unwrap().join("Cargo.toml"),
-                    "[package]\nname=\"zakoai-proxy\"\nversion = \"0.3.0\"\n",
+                    "[package]\nname=\"lxshai-proxy\"\nversion = \"0.3.0\"\n",
                 )
                 .unwrap();
             }
@@ -1576,7 +1576,7 @@ mod tests {
             token: "a".repeat(64),
             state_dir: state_dir.clone(),
             data_dir,
-            project: "zakoai-proxy".into(),
+            project: "lxshai-proxy".into(),
             service: "proxy".into(),
             client: reqwest::Client::new(),
             docker: reqwest::Client::new(),
@@ -1893,11 +1893,11 @@ mod tests {
         release["prerelease"] = json!(false);
         for url in [
             "https://evil.invalid/",
-            "https://github.com/other/ZakoProxyCLI/releases/tag/v1.2.3",
+            "https://github.com/other/LxshProxyCLI/releases/tag/v1.2.3",
             "https://github.com/LinXiNexus/ZakoProxyCLI/releases/tag/v1.2.4",
             "https://github.com/LinXiNexus/ZakoProxyCLI/releases/tag/v1.2.3?download=1",
             "https://github.com/LinXiNexus/ZakoProxyCLI/releases/tag/v1.2.3#fragment",
-            "https://github.com.evil.invalid/mizaawa/ZakoProxyCLI/releases/tag/v1.2.3",
+            "https://github.com.evil.invalid/mizaawa/LxshProxyCLI/releases/tag/v1.2.3",
         ] {
             release["html_url"] = json!(url);
             assert!(parse_release(&release).is_err(), "{url}");
@@ -1905,7 +1905,7 @@ mod tests {
     }
     #[test]
     fn replacement_preserves_runtime_contract() {
-        let target = json!({"Config":{"Image":"old","Hostname":"old-id","Env":["DATA_DIR=/data"],"Entrypoint":["/app/zakoai-proxy"],"Labels":{"scope":"proxy"},"Healthcheck":{"Test":["CMD","curl"]}},"HostConfig":{"PortBindings":{"1990/tcp":[{"HostPort":"1990"}]},"Binds":["data:/data:rw","control:/control:ro"],"ReadonlyRootfs":true,"CapDrop":["ALL"]},"NetworkSettings":{"Networks":{"default":{"Aliases":["proxy"],"IPAddress":"172.18.0.2"}}}});
+        let target = json!({"Config":{"Image":"old","Hostname":"old-id","Env":["DATA_DIR=/data"],"Entrypoint":["/app/lxshai-proxy"],"Labels":{"scope":"proxy"},"Healthcheck":{"Test":["CMD","curl"]}},"HostConfig":{"PortBindings":{"1990/tcp":[{"HostPort":"1990"}]},"Binds":["data:/data:rw","control:/control:ro"],"ReadonlyRootfs":true,"CapDrop":["ALL"]},"NetworkSettings":{"Networks":{"default":{"Aliases":["proxy"],"IPAddress":"172.18.0.2"}}}});
         let config = replacement_config(&target, "new").unwrap();
         assert_eq!(config["Image"], "new");
         assert_eq!(config["Env"], target["Config"]["Env"]);
@@ -1938,7 +1938,7 @@ mod tests {
         let state_dir = directory.path().join("updates");
         private_dir(&state_dir).await.unwrap();
         let unique = uuid::Uuid::new_v4().simple().to_string();
-        let project = format!("zako-update-test-{unique}");
+        let project = format!("lxsh-update-test-{unique}");
         let name = format!("{project}-proxy");
         let volume = format!("{project}-data");
         let network = format!("{project}-network");

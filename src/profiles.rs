@@ -191,7 +191,7 @@ mod tests {
                         .any(|model| model == "deepseek-4.1-flash")
                 );
             } else {
-                assert!(profile.instruction.contains("ZakoAI · 冷咖啡 API 内联适配"));
+                assert!(profile.instruction.contains("LXSH · 冷咖啡 API 内联适配"));
                 assert!(profile.instruction.contains("三拍"));
                 assert!(profile.instruction.contains("CHA-ROUTE"));
             }

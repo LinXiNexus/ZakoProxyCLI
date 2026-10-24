@@ -298,8 +298,8 @@ export function AgentChatPage({
 
   useEffect(() => {
     const sync = () => setPrefs(loadPrefs());
-    window.addEventListener("zako-prefs", sync);
-    return () => window.removeEventListener("zako-prefs", sync);
+    window.addEventListener("lxsh-prefs", sync);
+    return () => window.removeEventListener("lxsh-prefs", sync);
   }, []);
 
   useEffect(() => {

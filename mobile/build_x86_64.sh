@@ -6,5 +6,5 @@ cd "$HOME/ZakoProxyCLI/ZakoProxyCLI"
 export CARGO_TARGET_X86_64_LINUX_ANDROID_LINKER="$HOME/ndk-x86/clang-x86_64.sh"
 export CC_x86_64_linux_android="$HOME/ndk-x86/clang-x86_64.sh"
 export AR_x86_64_linux_android="llvm-ar"
-cargo build --release --target x86_64-linux-android --bin zakoai-proxy
-echo "OK: target/x86_64-linux-android/release/zakoai-proxy"
+cargo build --release --target x86_64-linux-android --bin lxshai-proxy
+echo "OK: target/x86_64-linux-android/release/lxshai-proxy"
