@@ -64,13 +64,40 @@ final class UI {
 }
 
 final class DashboardPage extends LinearLayout {
+    private final TextView status;
+    private final TextView stats;
+
     DashboardPage(Context c) {
         super(c);
         LinearLayout page = UI.page(c);
         page.addView(UI.title(c, "仪表盘"));
         page.addView(UI.subtitle(c, "本地服务状态与用量概览"));
-        page.addView(UI.panel(c, UI.label(c, "本地服务"), UI.empty(c, "LXSH 内嵌服务器将在前台服务中运行")));
+
+        status = UI.empty(c, "正在检查本地服务…");
+        page.addView(UI.panel(c, UI.label(c, "本地服务"), status));
+
+        stats = UI.empty(c, "登录后显示用量");
+        page.addView(UI.panel(c, UI.label(c, "用量"), stats));
         addView(page);
+        refresh();
+    }
+
+    private void refresh() {
+        new Thread(() -> {
+            try {
+                java.net.HttpURLConnection c = (java.net.HttpURLConnection)
+                        new java.net.URL("http://127.0.0.1:1991/health").openConnection();
+                c.setConnectTimeout(1500);
+                c.setReadTimeout(1500);
+                boolean ok = c.getResponseCode() == 200;
+                c.disconnect();
+                android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+                h.post(() -> status.setText(ok ? "✓ 本地服务运行中" : "✗ 本地服务未运行"));
+            } catch (Exception e) {
+                android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+                h.post(() -> status.setText("✗ 无法连接本地服务"));
+            }
+        }).start();
     }
 }
 

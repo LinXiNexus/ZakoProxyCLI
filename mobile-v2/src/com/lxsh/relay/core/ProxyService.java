@@ -16,7 +16,7 @@ import com.lxsh.relay.data.Db;
 public final class ProxyService extends Service {
     private static final String TAG = "LXSH-Server";
     private static final String CHANNEL = "lxsh_proxy";
-    public static final int SERVER_PORT = 1990;
+    public static final int SERVER_PORT = 1991;
 
     private Db db;
     private Server server;
@@ -26,6 +26,7 @@ public final class ProxyService extends Service {
         super.onCreate();
         startForegroundInternal();
         db = new Db();
+        db.open(this); // opens (or migrates + creates) lxsh.db
         Router router = new Router();
         new Api(db, this).register(router);
         server = new Server(router);

@@ -31,7 +31,9 @@ public final class MainActivity extends Activity {
         root.setBackgroundColor(colorRes(R.color.bg_light));
 
         content = new FrameLayout(this);
-        root.addView(content, new FrameLayout.LayoutParams(-1, -1));
+        FrameLayout.LayoutParams contentLp = new FrameLayout.LayoutParams(-1, -1);
+        contentLp.topMargin = dp(56);
+        root.addView(content, contentLp);
 
         scrim = new View(this);
         scrim.setBackgroundColor(0x66000000);
@@ -41,6 +43,27 @@ public final class MainActivity extends Activity {
 
         drawer = buildDrawer();
         root.addView(drawer, new FrameLayout.LayoutParams(dp(256), -1, Gravity.LEFT));
+
+        // 顶栏（最上层）：汉堡按钮 + 标题
+        android.widget.LinearLayout topbar = new android.widget.LinearLayout(this);
+        topbar.setOrientation(android.widget.LinearLayout.HORIZONTAL);
+        topbar.setGravity(Gravity.CENTER_VERTICAL);
+        topbar.setPadding(dp(8), dp(10), dp(16), dp(10));
+        topbar.setBackgroundColor(0xE6FFFFFF);
+        ImageButton menu = new ImageButton(this);
+        menu.setImageResource(android.R.drawable.ic_menu_sort_by_size);
+        menu.setBackground(null);
+        menu.setPadding(dp(8), dp(8), dp(8), dp(8));
+        menu.setOnClickListener(v -> openDrawer());
+        topbar.addView(menu, new android.widget.LinearLayout.LayoutParams(dp(44), dp(44)));
+        TextView title = new TextView(this);
+        title.setText("LXSH");
+        title.setTextSize(16);
+        title.setTypeface(android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD));
+        title.setTextColor(colorRes(R.color.text_primary_light));
+        topbar.addView(title, new android.widget.LinearLayout.LayoutParams(-2, -2));
+        FrameLayout.LayoutParams topLp = new FrameLayout.LayoutParams(-1, -2, Gravity.TOP);
+        root.addView(topbar, topLp);
         return root;
     }
 
@@ -49,7 +72,7 @@ public final class MainActivity extends Activity {
         side.setOrientation(LinearLayout.VERTICAL);
         side.setBackgroundColor(colorRes(R.color.panel_light));
         side.setPadding(dp(16), dp(24), dp(16), dp(16));
-        translate(-dp(300));
+        side.setTranslationX(-dp(300));
 
         TextView brand = new TextView(this);
         brand.setText("LXSH");

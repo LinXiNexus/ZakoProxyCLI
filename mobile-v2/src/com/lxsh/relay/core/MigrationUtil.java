@@ -43,10 +43,11 @@ public final class MigrationUtil {
                 return true;
             }
         } catch (Exception ignored) {}
-        // Root path.
+        // Root path: Android toybox has no `stat -c`, so chown to our own uid directly.
+        String uid = String.valueOf(android.os.Process.myUid());
         if (runRoot("cp " + OLD_BASE + "/data/" + OLD_DB + " " + dataDir.getAbsolutePath() + "/lxsh.db"
                 + " && cp " + OLD_BASE + "/data/master.key " + dataDir.getAbsolutePath() + "/master.key"
-                + " && chown -R $(stat -c '%u:%g' " + ctx.getFilesDir().getParentFile().getAbsolutePath() + ") " + dataDir.getAbsolutePath()
+                + " && chown " + uid + ":" + uid + " " + dataDir.getAbsolutePath() + "/lxsh.db " + dataDir.getAbsolutePath() + "/master.key"
                 + " && chmod 600 " + dataDir.getAbsolutePath() + "/lxsh.db " + dataDir.getAbsolutePath() + "/master.key")) {
             Log.i(TAG, "legacy db imported via root");
             return true;
